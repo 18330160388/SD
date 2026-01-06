@@ -35,7 +35,11 @@ def compute_v_morph(h_t: torch.Tensor, token_text: str, tokenizer, morph_mlp: to
         return torch.cat([radical_onehot, stroke_onehot])  # (6,)
     
     if len(token_text) == 1:
-        morph_feat = get_morph_feature(token_text).to(h_t.device)
+        morph_feat = get_morph_feature(token_text)
+        # 确保morph_feat和h_t在模型所在设备上
+        device = next(morph_mlp.parameters()).device
+        morph_feat = morph_feat.to(device)
+        h_t = h_t.to(device)
         # 形态特征嵌入到语义空间
         morph_emb = morph_mlp(morph_feat.unsqueeze(0)).squeeze(0)  # (d,)
         # 欧氏距离平方
@@ -45,6 +49,9 @@ def compute_v_morph(h_t: torch.Tensor, token_text: str, tokenizer, morph_mlp: to
 def compute_v_hier(h_t: torch.Tensor, hidden_states: torch.Tensor, token_group: List[int]) -> float:
     """计算层级编码一致性势能 V_hier（文档2公式：1-余弦相似度）"""
     # token_group：当前token所属高层级单元（如子词）的token索引列表
+    # 确保所有张量在同一设备上
+    device = h_t.device
+    hidden_states = hidden_states.to(device)
     group_vectors = hidden_states[token_group]
     hier_avg = torch.mean(group_vectors, dim=0)  # 高层级聚合编码
     # 计算余弦相似度
@@ -56,6 +63,10 @@ def compute_v_hier(h_t: torch.Tensor, hidden_states: torch.Tensor, token_group: 
 def compute_v_global(h_t: torch.Tensor, hidden_states: torch.Tensor, attn_weights: torch.Tensor) -> float:
     """计算全局语义锚定势能 V_global（文档2公式：归一化欧氏距离）"""
     # attn_weights：自注意力权重（shape: (seq_len,)），来自LLM真实输出
+    # 确保所有张量在同一设备上
+    device = h_t.device
+    hidden_states = hidden_states.to(device)
+    attn_weights = attn_weights.to(device)
     attn_norm = attn_weights / (torch.sum(attn_weights) + 1e-8)
     global_vec = torch.sum(hidden_states * attn_norm.unsqueeze(1), dim=0)  # 全局语义锚点
     # 归一化欧氏距离
@@ -66,6 +77,8 @@ def compute_v_global(h_t: torch.Tensor, hidden_states: torch.Tensor, attn_weight
 def compute_v_poly(h_t: torch.Tensor, poly_mlp: torch.nn.Module, num_senses: int = 5) -> float:
     """计算多义性消解一致性势能 V_poly（文档2公式：义项分布熵）"""
     # poly_mlp：预训练的义项分类器（输入h_t，输出各义项概率）
+    device = next(poly_mlp.parameters()).device
+    h_t = h_t.to(device)
     sense_logits = poly_mlp(h_t.unsqueeze(0)).squeeze(0)  # (num_senses,)
     sense_probs = torch.softmax(sense_logits, dim=0)
     # 计算熵（避免log(0)）

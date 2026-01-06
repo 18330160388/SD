@@ -6,7 +6,7 @@ def extract_hidden_states(
     model_name: str = "D:\\liubotao\\other\\BIT_TS\\LLM_GCG\\code\\models\\Qwen2___5-0___5B-Instruct",
     middle_layer_idx: int = 12,  # 默认第12层，支持变量传入
     device: str = None
-) -> tuple[torch.Tensor, int, AutoTokenizer, dict]:
+) -> tuple[torch.Tensor, int, AutoTokenizer, dict, torch.Tensor]:
     """
     提取千问7B指定中间层的语义状态向量h(t)
     
@@ -21,6 +21,7 @@ def extract_hidden_states(
         token_num: 文本的token数量
         tokenizer: tokenizer对象
         inputs: tokenizer编码后的输入
+        attentions: 指定层的注意力权重，shape=(num_heads, token_num, token_num)
     """
     # 自动选择设备
     if device is None:
@@ -43,9 +44,9 @@ def extract_hidden_states(
         max_length=512
     ).to(device)
     
-    # 提取所有层的隐藏状态（output_hidden_states=True）
+    # 提取所有层的隐藏状态和注意力权重
     with torch.no_grad():  # 禁用梯度计算，加速并节省显存
-        outputs = model(**inputs, output_hidden_states=True)
+        outputs = model(**inputs, output_hidden_states=True, output_attentions=True)
     
     # 获取指定中间层的h(t)（shape: (batch_size, token_num, hidden_dim)）
     middle_hidden = outputs.hidden_states[middle_layer_idx]
@@ -53,7 +54,17 @@ def extract_hidden_states(
     h_t = middle_hidden.squeeze(0).cpu()  # 移到CPU便于后续计算
     token_num = h_t.shape[0]
     
-    return h_t, token_num, tokenizer, inputs
+    # 获取指定层的注意力权重（shape: (batch_size, num_heads, token_num, token_num)）
+    middle_attentions = outputs.attentions[middle_layer_idx]
+    # 对所有注意力头取平均，得到 (token_num, token_num)
+    avg_attentions = middle_attentions.mean(dim=1).squeeze(0).cpu()
+    # 对每个token，取其对所有token的注意力权重的平均，得到 (token_num,)
+    attn_weights = avg_attentions.mean(dim=1)
+    
+    # 将inputs也移到CPU，避免后续使用时设备不匹配
+    inputs = {k: v.cpu() for k, v in inputs.items()}
+    
+    return h_t, token_num, tokenizer, inputs, attn_weights
 
 # 测试代码（单独运行时验证）
 if __name__ == "__main__":
