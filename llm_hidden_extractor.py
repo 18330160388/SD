@@ -58,15 +58,17 @@ def extract_hidden_states(
     middle_attentions = outputs.attentions[middle_layer_idx]
     # 对所有注意力头取平均，得到 (token_num, token_num)
     # avg_attentions[i, j] 表示 token i 对 token j 的注意力
-    avg_attentions = middle_attentions.mean(dim=1).squeeze(0).cpu()
-    # 计算每个token对全局的贡献度：所有其他tokens对它的注意力之和
-    # attn_weights[j] = Σ_i avg_attentions[i, j]（所有query对token j的注意力）
-    attn_weights = avg_attentions.sum(dim=0)  # shape: (token_num,)
+    avg_attentions = middle_attentions.mean(dim=1).squeeze(0).cpu()  # [token_num, token_num]
+    
+    # 返回完整的二维注意力矩阵（用于 H(t) 计算）
+    # 同时计算全局贡献度（用于 V(t) 等其他计算）
+    attn_weights_matrix = avg_attentions  # shape: (token_num, token_num)
+    attn_weights_global = avg_attentions.sum(dim=0)  # shape: (token_num,) 用于V(t)
     
     # 将inputs也移到CPU，避免后续使用时设备不匹配
     inputs = {k: v.cpu() for k, v in inputs.items()}
     
-    return h_t, token_num, tokenizer, inputs, attn_weights
+    return h_t, token_num, tokenizer, inputs, attn_weights_matrix
 
 # 测试代码（单独运行时验证）
 if __name__ == "__main__":

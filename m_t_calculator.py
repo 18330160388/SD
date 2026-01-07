@@ -377,11 +377,11 @@ def compute_m_t(
         is_chinese = '\u4e00' <= first_char <= '\u9fff'
         display_char = first_char if is_chinese else '(非汉字)'
         print(f"  ⚠️  多字token，提取首字 '{display_char}' 的形态特征")
-    print(f"  ✓ 形态特征维度: {m_t.shape[0]} (期望224)")
+    print(f"  [OK] 形态特征维度: {m_t.shape[0]} (期望224)")
     
     # 2. 形态特征嵌入Φ(m(t))（映射至语义空间）
     phi_m_t = morph_embedding(m_t).to(h_t.device)
-    print(f"  ✓ 形态嵌入维度: {phi_m_t.shape[0]} (语义空间维度)")
+    print(f"  [OK] 形态嵌入维度: {phi_m_t.shape[0]} (语义空间维度)")
     
     # 3. 计算基础匹配度（余弦相似度，截断负相关值）
     h_t_np = h_t.detach().cpu().numpy() if h_t.requires_grad else h_t.cpu().numpy()
@@ -414,7 +414,7 @@ def compute_m_t(
     print(f"    M(t) = cosine(h(t), Φ(m(t))) × η(t)")
     print(f"         = {base_match:.6f} × {eta_t:.6f}")
     print(f"         = {M_t_result:.6f}")
-    print(f"    ✓ M(t) ∈ [0,1]: {0 <= M_t_result <= 1}")
+    print(f"    [OK] M(t) in [0,1]: {0 <= M_t_result <= 1}")
     print(f"{'='*60}\n")
     
     return M_t_result
