@@ -12,48 +12,50 @@ def compute_v_local(h_t: torch.Tensor, hidden_states: torch.Tensor, token_idx: i
     local_window = torch.cat([local_window[:token_idx-start_idx], local_window[token_idx-start_idx+1:]])
     if local_window.shape[0] == 0:
         return 1.0  # 无上下文时势能最高
-    # 计算平均余弦相似度
+    # 计算余弦相似度，使用固定分母 1/(2k) 严格按照文档公式
     h_t_norm = h_t / (torch.norm(h_t) + 1e-8)
     local_norm = local_window / (torch.norm(local_window, dim=1, keepdim=True) + 1e-8)
-    avg_sim = torch.mean(torch.matmul(local_norm, h_t_norm.unsqueeze(-1))).item()
+    sum_sim = torch.sum(torch.matmul(local_norm, h_t_norm.unsqueeze(-1))).item()
+    avg_sim = sum_sim / (2 * k)  # 固定分母2k，非实际邻居数
     return 1 - avg_sim  # 相似度越低，势能越高
 
-def compute_v_morph(h_t: torch.Tensor, token_text: str, tokenizer, morph_mlp: torch.nn.Module) -> float:
-    """计算形态-语义一致性势能 V_morph（文档2公式：欧氏距离平方）"""
-    # 提取形态特征（简化为部首+笔画数编码）
-    def get_morph_feature(char: str) -> torch.Tensor:
-        # 部首编码（one-hot，简化版）
-        radical_onehot = torch.zeros(5)  # 5个常见部首
-        radical_map = {"氵":0, "木":1, "火":2, "口":3, "扌":4}
-        for radical, idx in radical_map.items():
-            if radical in char:
-                radical_onehot[idx] = 1.0
-                break
-        # 笔画数（简化为0-1编码，>5画为1）
-        stroke_count = len(char) * 3  # 简化估算，实际需中文工具
-        stroke_onehot = torch.tensor([1.0 if stroke_count > 5 else 0.0])
-        return torch.cat([radical_onehot, stroke_onehot])  # (6,)
+def compute_v_morph(h_t: torch.Tensor, m_t: np.ndarray, morph_embedding: torch.nn.Module) -> float:
+    """计算形态-语义一致性势能 V_morph（文档2公式：欧氏距离平方）
     
-    if len(token_text) == 1:
-        morph_feat = get_morph_feature(token_text)
-        # 确保morph_feat和h_t在模型所在设备上
-        device = next(morph_mlp.parameters()).device
-        morph_feat = morph_feat.to(device)
-        h_t = h_t.to(device)
-        # 形态特征嵌入到语义空间
-        morph_emb = morph_mlp(morph_feat.unsqueeze(0)).squeeze(0)  # (d,)
-        # 欧氏距离平方
-        return torch.norm(h_t - morph_emb, p=2).item() ** 2
-    return 0.5  # 非单字token默认中等势能
+    Args:
+        h_t: 语义编码向量（d维）
+        m_t: 形态特征向量（224维，来自M(t)模块的morph_extractor）
+        morph_embedding: MorphEmbedding模块（将224维m(t)映射到d维）
+    
+    Returns:
+        V_morph = ||h(t) - MorphEmbedding(m(t))||²₂
+    """
+    if m_t is None:
+        return 0.5  # 非中文字符默认中等势能
+    
+    # 确保在同一设备上
+    device = h_t.device
+    
+    # 使用MorphEmbedding将m(t)映射到语义空间：Φ(m(t))
+    phi_m_t = morph_embedding(m_t).to(device)  # (d,)
+    
+    # 计算欧氏距离平方：||h(t) - Φ(m(t))||²₂
+    diff = h_t - phi_m_t
+    v_morph = torch.sum(diff ** 2).item()
+    
+    return v_morph
 
 def compute_v_hier(h_t: torch.Tensor, hidden_states: torch.Tensor, token_group: List[int]) -> float:
     """计算层级编码一致性势能 V_hier（文档2公式：1-余弦相似度）"""
-    # token_group：当前token所属高层级单元（如子词）的token索引列表
+    # token_group：当前token所属高层级单元的其他token索引（不含自身）
+    if len(token_group) == 0:
+        return 0.0  # 无高层级上下文时势能为0（完全一致）
+    
     # 确保所有张量在同一设备上
     device = h_t.device
     hidden_states = hidden_states.to(device)
     group_vectors = hidden_states[token_group]
-    hier_avg = torch.mean(group_vectors, dim=0)  # 高层级聚合编码
+    hier_avg = torch.mean(group_vectors, dim=0)  # 高层级聚合编码 h̄(t)
     # 计算余弦相似度
     h_t_norm = h_t / (torch.norm(h_t) + 1e-8)
     hier_norm = hier_avg / (torch.norm(hier_avg) + 1e-8)
@@ -90,11 +92,10 @@ def compute_v_t(
     h_t: torch.Tensor,
     hidden_states: torch.Tensor,
     token_idx: int,
-    token_text: str,
-    tokenizer,
+    m_t: np.ndarray,
     attn_weights: torch.Tensor,
     token_group: List[int],
-    morph_mlp: torch.nn.Module,
+    morph_embedding: torch.nn.Module,
     poly_mlp: torch.nn.Module,
     lambdas: List[float] = [0.3, 0.2, 0.15, 0.2, 0.15]  # 权重系数（和为1）
 ) -> float:
@@ -103,7 +104,7 @@ def compute_v_t(
     """
     # 1. 计算各子势能
     v_local = compute_v_local(h_t, hidden_states, token_idx)
-    v_morph = compute_v_morph(h_t, token_text, tokenizer, morph_mlp)
+    v_morph = compute_v_morph(h_t, m_t, morph_embedding)
     v_hier = compute_v_hier(h_t, hidden_states, token_group)
     v_global = compute_v_global(h_t, hidden_states, attn_weights)
     v_poly = compute_v_poly(h_t, poly_mlp)
@@ -120,11 +121,10 @@ def compute_v_t(
 
 def compute_v_t_batch(
     hidden_states: torch.Tensor,
-    token_texts: List[str],
-    tokenizer,
     attn_weights: torch.Tensor,
     token_groups: List[List[int]],  # 每个token的高层级单元索引
-    morph_mlp: torch.nn.Module,
+    m_t_list: List[np.ndarray],
+    morph_embedding: torch.nn.Module,
     poly_mlp: torch.nn.Module
 ) -> np.ndarray:
     """批量计算所有token的V(h(t))"""
@@ -132,17 +132,16 @@ def compute_v_t_batch(
     V_t_list = []
     for token_idx in range(seq_len):
         h_t = hidden_states[token_idx]
-        token_text = token_texts[token_idx]
+        m_t = m_t_list[token_idx]
         token_group = token_groups[token_idx]
         V_t = compute_v_t(
             h_t=h_t,
             hidden_states=hidden_states,
             token_idx=token_idx,
-            token_text=token_text,
-            tokenizer=tokenizer,
+            m_t=m_t,
             attn_weights=attn_weights,
             token_group=token_group,
-            morph_mlp=morph_mlp,
+            morph_embedding=morph_embedding,
             poly_mlp=poly_mlp
         )
         V_t_list.append(V_t)

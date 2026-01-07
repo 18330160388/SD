@@ -57,9 +57,11 @@ def extract_hidden_states(
     # 获取指定层的注意力权重（shape: (batch_size, num_heads, token_num, token_num)）
     middle_attentions = outputs.attentions[middle_layer_idx]
     # 对所有注意力头取平均，得到 (token_num, token_num)
+    # avg_attentions[i, j] 表示 token i 对 token j 的注意力
     avg_attentions = middle_attentions.mean(dim=1).squeeze(0).cpu()
-    # 对每个token，取其对所有token的注意力权重的平均，得到 (token_num,)
-    attn_weights = avg_attentions.mean(dim=1)
+    # 计算每个token对全局的贡献度：所有其他tokens对它的注意力之和
+    # attn_weights[j] = Σ_i avg_attentions[i, j]（所有query对token j的注意力）
+    attn_weights = avg_attentions.sum(dim=0)  # shape: (token_num,)
     
     # 将inputs也移到CPU，避免后续使用时设备不匹配
     inputs = {k: v.cpu() for k, v in inputs.items()}

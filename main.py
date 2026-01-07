@@ -1,5 +1,5 @@
 from llm_hidden_extractor import extract_hidden_states
-from curvature_calculator import compute_local_sectional_curvature, compute_curvature_batch
+from k_t_calculator import compute_local_sectional_curvature, compute_curvature_batch
 from d_t_calculator import compute_d_t, compute_d_t_batch
 from c_t_calculator import compute_c_t, compute_c_t_batch
 from v_t_calculator import compute_v_t, compute_v_t_batch
@@ -8,16 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
+import os
 
 # ---------------------- 初始化辅助模型 ----------------------
-def init_morph_mlp(input_dim: int = 6, output_dim: int = 896) -> nn.Module:
-    mlp = nn.Sequential(
-        nn.Linear(input_dim, 64),
-        nn.ReLU(),
-        nn.Linear(64, output_dim)
-    ).eval()
-    return mlp
-
 def init_poly_mlp(input_dim: int = 896, num_senses: int = 5) -> nn.Module:
     mlp = nn.Sequential(
         nn.Linear(input_dim, 128),
@@ -27,7 +20,7 @@ def init_poly_mlp(input_dim: int = 896, num_senses: int = 5) -> nn.Module:
     return mlp
 
 # ---------------------- 绘图函数 ----------------------
-def plot_curvature_by_layer(curvature_data, token_texts, layers, text):
+def plot_k_t_by_layer(k_t_data, token_texts, layers, text):
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
     
@@ -42,7 +35,7 @@ def plot_curvature_by_layer(curvature_data, token_texts, layers, text):
     
     for i, layer in enumerate(layers):
         offset = (i - len(layers)/2) * width
-        bars = ax.bar(x + offset, curvature_data[i], width, 
+        bars = ax.bar(x + offset, k_t_data[i], width, 
                      label=f'Layer {layer}', 
                      color=colors[i],
                      edgecolor='white',
@@ -67,10 +60,11 @@ def plot_curvature_by_layer(curvature_data, token_texts, layers, text):
         spine.set_color('#333333')
     
     plt.tight_layout()
-    filename = f'curvature_plot_{text.replace(" ", "_")}.png'
+    os.makedirs('outputs', exist_ok=True)
+    filename = f'outputs/k_t_plot_{text.replace(" ", "_")}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
-    print(f"\n曲率图表已保存为 {filename}")
+    print(f"\nK(t)图表已保存为 {filename}")
 
 def plot_d_t_by_layer(d_t_data, token_texts, layers, text):
     plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -112,7 +106,8 @@ def plot_d_t_by_layer(d_t_data, token_texts, layers, text):
         spine.set_color('#333333')
     
     plt.tight_layout()
-    filename = f'd_t_plot_{text.replace(" ", "_")}.png'
+    os.makedirs('outputs', exist_ok=True)
+    filename = f'outputs/d_t_plot_{text.replace(" ", "_")}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"\nD(t)图表已保存为 {filename}")
@@ -157,7 +152,8 @@ def plot_c_t_by_layer(c_t_data, token_texts, layers, text):
         spine.set_color('#333333')
     
     plt.tight_layout()
-    filename = f'c_t_plot_{text.replace(" ", "_")}.png'
+    os.makedirs('outputs', exist_ok=True)
+    filename = f'outputs/c_t_plot_{text.replace(" ", "_")}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"\nC(t)图表已保存为 {filename}")
@@ -192,6 +188,9 @@ def plot_v_t_by_layer(v_t_data, token_texts, layers, text):
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
     
+    # 设置Y轴范围从-10开始
+    ax.set_ylim(bottom=-10)
+    
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
     ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.8, color='gray')
@@ -202,7 +201,8 @@ def plot_v_t_by_layer(v_t_data, token_texts, layers, text):
         spine.set_color('#333333')
     
     plt.tight_layout()
-    filename = f'v_t_plot_{text.replace(" ", "_")}.png'
+    os.makedirs('outputs', exist_ok=True)
+    filename = f'outputs/v_t_plot_{text.replace(" ", "_")}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"\nV(t)图表已保存为 {filename}")
@@ -248,7 +248,8 @@ def plot_m_t_by_layer(m_t_data, token_texts, layers, text):
         spine.set_color('#333333')
     
     plt.tight_layout()
-    filename = f'm_t_plot_{text.replace(" ", "_")}.png'
+    os.makedirs('outputs', exist_ok=True)
+    filename = f'outputs/m_t_plot_{text.replace(" ", "_")}.png'
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"\nM(t)图表已保存为 {filename}")
@@ -256,7 +257,7 @@ def plot_m_t_by_layer(m_t_data, token_texts, layers, text):
 # ---------------------- 主函数 ----------------------
 def main():
     # 1. 配置参数
-    text = "我用苹果砸开了手机"
+    text = "他打补丁"
     layers = list(range(10, 17))
     device = "cuda" if torch.cuda.is_available() else "cpu"
     hidden_dim = 896
@@ -268,11 +269,10 @@ def main():
     m_poly_mlp = m_poly_mlp.to(device)
     
     # 2.2 V(t)工具
-    morph_mlp = init_morph_mlp(output_dim=hidden_dim).to(device)
     poly_mlp = init_poly_mlp(input_dim=hidden_dim).to(device)
     
     # 3. 存储所有指标数据
-    all_curvatures = []
+    all_k_t = []
     all_d_t = []
     all_c_t = []
     all_v_t = []
@@ -302,7 +302,8 @@ def main():
         if middle_layer == layers[0]:
             token_texts = current_token_texts
         
-        # 4.3 预计算当前层真实M(t)（核心：注入到curvature计算）
+        # 4.3 预计算当前层真实M(t)和m(t)向量
+        # M(t): 形态-语义匹配度标量（用于K/D/C计算）
         current_m_t = compute_m_t_batch(
             hidden_states=hidden_states,
             token_texts=current_token_texts,
@@ -312,44 +313,59 @@ def main():
         )
         all_m_t.append(current_m_t)
         
+        # m(t): 形态特征向量（224维，用于V_morph计算）
+        from m_t_calculator import extract_m_t_batch
+        current_m_t_vectors = extract_m_t_batch(
+            token_texts=current_token_texts,
+            morph_extractor=morph_extractor
+        )
+        
         # 4.4 计算K(t)（注入真实M(t)）
-        current_curvatures = compute_curvature_batch(
+        current_k_t = compute_curvature_batch(
             hidden_states=hidden_states,
             sentence_length=token_num,
             window_size=3,
             sim_threshold=0.5,
             precomputed_m_t_list=current_m_t.tolist()
         )
-        all_curvatures.append(current_curvatures)
+        all_k_t.append(current_k_t)
         
         # 4.5 计算D(t)
         current_d_t = compute_d_t_batch(
             hidden_states=hidden_states,
-            distance_type="euclidean",
-            normalize=True
+            window_size=3,
+            sim_threshold=0.5,
+            epsilon=1e-6,
+            precomputed_m_t_list=current_m_t
         )
         all_d_t.append(current_d_t)
         
         # 4.6 计算C(t)
         current_c_t = compute_c_t_batch(
             hidden_states=hidden_states,
-            token_texts=current_token_texts,
-            tokenizer=tokenizer,
             k=3,
             theta=0.5,
-            alpha=0.4
+            alpha=0.4,
+            precomputed_m_t_list=current_m_t
         )
         all_c_t.append(current_c_t)
         
-        # 4.7 计算V(t) - 使用真实注意力权重
-        token_groups = [[max(0, i-1), i, min(token_num-1, i+1)] for i in range(token_num)]
+        # 4.7 计算V(t) - 使用真实注意力权重和预计算的m(t)
+        # token_groups: 每个token的高层级单元（相邻tokens，不含自身）
+        token_groups = []
+        for i in range(token_num):
+            group = []
+            if i > 0:
+                group.append(i - 1)
+            if i < token_num - 1:
+                group.append(i + 1)
+            token_groups.append(group)
         current_v_t = compute_v_t_batch(
             hidden_states=hidden_states,
-            token_texts=current_token_texts,
-            tokenizer=tokenizer,
             attn_weights=attn_weights,
             token_groups=token_groups,
-            morph_mlp=morph_mlp,
+            m_t_list=current_m_t_vectors,
+            morph_embedding=morph_embedding,
             poly_mlp=poly_mlp
         )
         all_v_t.append(current_v_t)
@@ -357,7 +373,7 @@ def main():
         # 4.8 输出当前层结果
         for token_idx in range(token_num):
             print(f"Token[{token_idx}]：{current_token_texts[token_idx]}")
-            print(f"  K(t) = {current_curvatures[token_idx]:.6f}")
+            print(f"  K(t) = {current_k_t[token_idx]:.6f}")
             print(f"  D(t) = {current_d_t[token_idx]:.6f}")
             print(f"  C(t) = {current_c_t[token_idx]:.6f}")
             print(f"  V(t) = {current_v_t[token_idx]:.6f}")
@@ -365,13 +381,13 @@ def main():
             print(f"  ------------------------")
     
     # 5. 转换为数组并绘图
-    curvature_array = np.array(all_curvatures)
+    k_t_array = np.array(all_k_t)
     d_t_array = np.array(all_d_t)
     c_t_array = np.array(all_c_t)
     v_t_array = np.array(all_v_t)
     m_t_array = np.array(all_m_t)
     
-    plot_curvature_by_layer(curvature_array, token_texts, layers, text)
+    plot_k_t_by_layer(k_t_array, token_texts, layers, text)
     plot_d_t_by_layer(d_t_array, token_texts, layers, text)
     plot_c_t_by_layer(c_t_array, token_texts, layers, text)
     plot_v_t_by_layer(v_t_array, token_texts, layers, text)
