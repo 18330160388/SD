@@ -7,6 +7,7 @@ from m_t_calculator import compute_m_t, compute_m_t_batch, init_m_t_tools
 from g_t_calculator import init_driving_force_calculator
 from h_t_calculator import init_entropy_calculator
 from s_t_calculator import init_drift_calculator
+from flow_rate_calculator import init_flow_calculator
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -99,6 +100,13 @@ def plot_d_t_by_layer(d_t_data, token_texts, layers, text):
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
     
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(d_t_data)
+    data_max = np.max(d_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
+    
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
     ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.8, color='gray')
@@ -145,6 +153,13 @@ def plot_c_t_by_layer(c_t_data, token_texts, layers, text):
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
     
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(c_t_data)
+    data_max = np.max(c_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
+    
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
     ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.8, color='gray')
@@ -182,6 +197,26 @@ def plot_v_t_by_layer(v_t_data, token_texts, layers, text):
                      edgecolor='white',
                      linewidth=1.2,
                      alpha=0.85)
+        
+        # 在每个柱子上方标注数值
+        for j, bar in enumerate(bars):
+            height = bar.get_height()
+            # 根据数值大小调整标注位置和格式
+            if abs(height) >= 10:
+                label_text = f'{height:.1f}'
+                fontsize = 7
+            elif abs(height) >= 1:
+                label_text = f'{height:.2f}'
+                fontsize = 7
+            else:
+                label_text = f'{height:.3f}'
+                fontsize = 6
+            
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   label_text,
+                   ha='center', va='bottom' if height >= 0 else 'top',
+                   fontsize=fontsize, rotation=0,
+                   color='black', fontweight='normal')
     
     ax.set_xlabel('Token Index', fontsize=13, fontweight='bold')
     ax.set_ylabel('Semantic Consistency Potential V(t)', fontsize=13, fontweight='bold')
@@ -191,8 +226,12 @@ def plot_v_t_by_layer(v_t_data, token_texts, layers, text):
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
     
-    # 设置Y轴范围从-10开始
-    ax.set_ylim(bottom=-10)
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(v_t_data)
+    data_max = np.max(v_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
     
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
@@ -247,6 +286,13 @@ def plot_g_t_by_layer(g_t_data, token_texts, layers, text):
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)],
                        fontsize=10)
     
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(g_t_norms)
+    data_max = np.max(g_t_norms)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
+    
     ax.legend(loc='upper right', frameon=True, fancybox=False,
              shadow=False, framealpha=0.95, edgecolor='gray')
     ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.8, color='gray')
@@ -291,6 +337,14 @@ def plot_m_t_by_layer(m_t_data, token_texts, layers, text):
                 fontsize=15, fontweight='bold', pad=20)
     ax.set_xticks(x)
     ax.set_xticklabels(token_texts, rotation=45, ha='right')
+    
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(m_t_data)
+    data_max = np.max(m_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
+    
     ax.legend(loc='upper left', fontsize=10, framealpha=0.9)
     ax.grid(axis='y', alpha=0.3, linestyle='--')
     plt.tight_layout()
@@ -336,7 +390,13 @@ def plot_h_t_by_layer(h_t_data, token_texts, layers, text):
     ax.set_xticks(x)
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
-    ax.set_ylim(0, 1.0)
+    
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(h_t_data)
+    data_max = np.max(h_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
     
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
@@ -392,7 +452,13 @@ def plot_s_t_by_layer(s_t_data, token_texts, layers, text):
     ax.set_xticks(x)
     ax.set_xticklabels([f'{i}\n{token}' for i, token in enumerate(token_texts)], 
                        fontsize=10)
-    ax.set_ylim(0, 1.0)
+    
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(s_t_data)
+    data_max = np.max(s_t_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
     
     ax.legend(loc='upper right', frameon=True, fancybox=False, 
              shadow=False, framealpha=0.95, edgecolor='gray')
@@ -411,13 +477,88 @@ def plot_s_t_by_layer(s_t_data, token_texts, layers, text):
     
     plt.close()
 
+# ---------------------- 流率和驱动力绘图函数 ----------------------
+def plot_flow_rates_by_layer(flow_data, token_texts, layers, text, metric_name, ylabel, colormap='coolwarm'):
+    """
+    绘制流率指标的跨层变化图（折线图）
+    每个token转换绘制一条曲线，展示其在不同层之间的演化趋势
+    
+    参数:
+        flow_data: (num_layers, seq_len-1) 流率数据（注意长度比token少1）
+        token_texts: token文本列表
+        layers: 层编号列表
+        text: 原始文本
+        metric_name: 指标名称（如'dK_dt'）
+        ylabel: Y轴标签
+        colormap: 颜色映射
+    """
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    
+    fig, ax = plt.subplots(figsize=(14, 8))
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#f8f9fa')
+    
+    # 注意：流率长度比token少1（因为是差分）
+    num_flows = flow_data.shape[1]
+    
+    # 为每个token转换生成颜色
+    import matplotlib
+    colors = matplotlib.colormaps.get_cmap(colormap)(np.linspace(0.2, 0.8, num_flows))
+    
+    # 绘制每个token转换的演化曲线
+    for j in range(num_flows):
+        transition_label = f'{token_texts[j]}→{token_texts[j+1] if j+1 < len(token_texts) else "END"}'
+        ax.plot(layers, flow_data[:, j], 
+               marker='o', markersize=8, linewidth=2.5,
+               label=transition_label, color=colors[j],
+               alpha=0.85)
+    
+    # 添加零线（参考线）
+    ax.axhline(y=0, color='gray', linestyle='--', linewidth=1.5, alpha=0.5, zorder=1)
+    
+    ax.set_xlabel('Layer', fontsize=13, fontweight='bold')
+    ax.set_ylabel(ylabel, fontsize=13, fontweight='bold')
+    ax.set_title(f'{ylabel}\nText: "{text}"', 
+                 fontsize=14, fontweight='bold', pad=20)
+    
+    ax.set_xticks(layers)
+    ax.set_xticklabels([f'L{l}' for l in layers], fontsize=10)
+    
+    # 自动调整Y轴范围以显示负值
+    data_min = np.min(flow_data)
+    data_max = np.max(flow_data)
+    data_range = data_max - data_min
+    margin = 0.15 * data_range if data_range > 1e-6 else 0.1
+    ax.set_ylim(data_min - margin, data_max + margin)
+    
+    # 图例
+    ax.legend(loc='best', frameon=True, fancybox=True,
+             shadow=True, framealpha=0.9, fontsize=9)
+    
+    # 网格
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8)
+    ax.set_axisbelow(True)
+    
+    # 边框
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.2)
+        spine.set_color('#333333')
+    
+    plt.tight_layout()
+    filename = f'outputs/{metric_name}_plot_{text.replace(" ", "_")}.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f'[{metric_name}图表] 已保存到 {filename}')
+    plt.close()
+
 # ---------------------- 主函数 ----------------------
 def main():
     # 1. 配置参数
     # 对比测试：
     # "他打电话了" - "打电话"强固定搭配，"打"的多义性应该被充分消解（H(t)低）
     # "他打了一个" - "打"后缺少明确对象，多义性高（H(t)高）
-    text = "他打电话了"
+    # text = "书和笔它很轻便"
+    text = "他很行"
     layers = list(range(10, 17))
     device = "cuda" if torch.cuda.is_available() else "cpu"
     hidden_dim = 896
@@ -441,6 +582,9 @@ def main():
     # 2.5 S(t)工具（语义漂移系数计算器）
     drift_calc = init_drift_calculator()
     
+    # 2.6 流率计算器
+    flow_calc = init_flow_calculator()
+    
     # 3. 存储所有指标数据
     all_k_t = []
     all_d_t = []
@@ -450,6 +594,7 @@ def main():
     all_g_t = []  # 存储驱动力G(t)
     all_h_t = []  # 存储多义性熵H(t)
     all_s_t = []  # 新增：存储语义漂移系数S(t)
+    all_hidden_states = []  # 存储隐状态（用于计算流率）
     token_texts = []
     
     # 4. 逐层计算
@@ -583,7 +728,10 @@ def main():
         )
         all_s_t.append(s_t_batch)
         
-        # 4.11 输出当前层所有指标结果
+        # 4.11 存储隐状态（用于后续流率计算）
+        all_hidden_states.append(hidden_states.squeeze(0).cpu().numpy())
+        
+        # 4.12 单token输出
         for token_idx in range(token_num):
             print(f"Token[{token_idx}]：{current_token_texts[token_idx]}")
             print(f"  K(t) = {current_k_t[token_idx]:.6f}")
@@ -626,7 +774,70 @@ def main():
     g_t_array = np.array(all_g_t)  # (num_layers, seq_len, hidden_dim)
     h_t_array = np.array(all_h_t)  # (num_layers, seq_len)
     s_t_array = np.array(all_s_t)  # (num_layers, seq_len)
+    hidden_states_array = np.array(all_hidden_states)  # (num_layers, seq_len, hidden_dim)
     
+    # 5.1 计算流率指标
+    print(f"\n{'='*60}")
+    print("计算流率指标（系统动力学流量）")
+    print(f"{'='*60}")
+    
+    all_dK_dt = []
+    all_dD_dt = []
+    all_dC_dt = []
+    all_dV_dt = []
+    
+    for layer_idx in range(len(layers)):
+        # 提取当前层的状态序列
+        k_seq = k_t_array[layer_idx].tolist()
+        d_seq = d_t_array[layer_idx].tolist()
+        c_seq = c_t_array[layer_idx].tolist()
+        v_seq = v_t_array[layer_idx].tolist()
+        h_states = torch.from_numpy(hidden_states_array[layer_idx]).float()
+        
+        # 计算流率
+        flow_rates = flow_calc.compute_flow_rates(
+            k_sequence=k_seq,
+            d_sequence=d_seq,
+            c_sequence=c_seq,
+            v_sequence=v_seq,
+            hidden_states=h_states
+        )
+        
+        all_dK_dt.append(flow_rates['dK_dt'])
+        all_dD_dt.append(flow_rates['dD_dt'])
+        all_dC_dt.append(flow_rates['dC_dt'])
+        all_dV_dt.append(flow_rates['dV_dt'])
+        
+        # 输出当前层的流率统计
+        layer_num = layers[layer_idx]
+        print(f"\n--- Layer {layer_num} 流率统计 ---")
+        stats = flow_calc.compute_flow_statistics(flow_rates)
+        for name, stat in stats.items():
+            print(f"{name}: mean={stat['mean']:.4f}, max={stat['max']:.4f}, min={stat['min']:.4f}")
+        
+        # 输出dV/dt与-G(t)的相关性
+        if 'dV_G_correlation' in flow_rates:
+            print(f"dV/dt与-G(t)相关性: {flow_rates['dV_G_correlation']:.4f}")
+        
+        # 识别临界点
+        critical_points = flow_calc.identify_critical_points(flow_rates, threshold_percentile=90.0)
+        print(f"临界点（top 10%变化最剧烈的位置）:")
+        for name, indices in critical_points.items():
+            if len(indices) > 0:
+                transitions = [f"{i}→{i+1}" for i in indices]
+                print(f"  {name}: {', '.join(transitions)}")
+    
+    # 转换为数组
+    dK_dt_array = np.array(all_dK_dt)  # (num_layers, seq_len-1)
+    dD_dt_array = np.array(all_dD_dt)
+    dC_dt_array = np.array(all_dC_dt)
+    dV_dt_array = np.array(all_dV_dt)
+    
+    print(f"\n{'='*60}")
+    print("绘制所有图表")
+    print(f"{'='*60}")
+    
+    # 5.2 绘制存量指标（原有的8个指标）
     plot_k_t_by_layer(k_t_array, token_texts, layers, text)
     plot_d_t_by_layer(d_t_array, token_texts, layers, text)
     plot_c_t_by_layer(c_t_array, token_texts, layers, text)
@@ -635,6 +846,21 @@ def main():
     plot_g_t_by_layer(g_t_array, token_texts, layers, text)
     plot_h_t_by_layer(h_t_array, token_texts, layers, text)
     plot_s_t_by_layer(s_t_array, token_texts, layers, text)
+    
+    # 5.3 绘制流率指标（新增的4个流量指标）
+    plot_flow_rates_by_layer(dK_dt_array, token_texts, layers, text, 
+                            'dK_dt', 'Curvature Evolution Rate dK/dt')
+    plot_flow_rates_by_layer(dD_dt_array, token_texts, layers, text,
+                            'dD_dt', 'Distance Change Rate dD/dt')
+    plot_flow_rates_by_layer(dC_dt_array, token_texts, layers, text,
+                            'dC_dt', 'Clustering Density Growth Rate dC/dt')
+    plot_flow_rates_by_layer(dV_dt_array, token_texts, layers, text,
+                            'dV_dt', 'Potential Decay Rate dV/dt')
+    
+    print(f"\n{'='*60}")
+    print("所有计算和绘图完成！")
+    print(f"共生成12个图表：8个存量指标 + 4个流率指标")
+    print(f"{'='*60}")
 
 if __name__ == "__main__":
     main()

@@ -96,34 +96,36 @@ def compute_local_sectional_curvature(
     if h_star_original is None:
         return 0.0
     
-    # 5. 计算协方差和方差（用原始向量）
-    # 文档说明：Cov(h_t, h*) = 1/(d-1) * Σ_d (h_t[d] - mean(h_t)) * (h*[d] - mean(h*))
-    # 其中 d 表示向量维度，这是两个向量各维度的协方差
+    # 5. 计算协方差和方差（使用归一化向量以控制数值尺度）
+    # 文档要求："通过向量归一化（|h_t|_2=1，|h*_t|_2=1）将曲率核心项范围压缩至 [-1,1]"
+    # 使用归一化向量确保 Cov、Var、Gram 在合理的数值范围内
     
-    d = h_t_np.shape[0]  # 向量维度
+    d = h_t_norm.shape[0]  # 向量维度
     
-    # 计算各向量的均值（标量）
-    h_t_mean = np.mean(h_t_np)
-    h_star_mean = np.mean(h_star_original)
+    # 计算归一化向量的均值（标量）
+    h_t_mean = np.mean(h_t_norm)
+    h_star_mean = np.mean(h_star_norm)
     
     # 协方差：各维度偏差的乘积之和 / (d-1)
-    cov_h_t_h_star = np.sum((h_t_np - h_t_mean) * (h_star_original - h_star_mean)) / max(d - 1, 1)
+    cov_h_t_h_star = np.sum((h_t_norm - h_t_mean) * (h_star_norm - h_star_mean)) / max(d - 1, 1)
     
     # Var(h_t)：h_t 各维度偏差的平方和 / (d-1)
-    var_h_t = np.sum((h_t_np - h_t_mean) ** 2) / max(d - 1, 1)
+    var_h_t = np.sum((h_t_norm - h_t_mean) ** 2) / max(d - 1, 1)
     
     # 避免方差为0
     if var_h_t < epsilon:
         var_h_t = epsilon
     
-    # 6. 计算Gram行列式和内积（用原始向量）
-    norm_h_t_sq = np.dot(h_t_np, h_t_np)
-    norm_h_star_sq = np.dot(h_star_original, h_star_original)
-    dot_h_t_h_star = np.dot(h_t_np, h_star_original)
+    # 6. 计算Gram行列式和内积（使用归一化向量）
+    norm_h_t_sq = np.dot(h_t_norm, h_t_norm)  # ≈ 1
+    norm_h_star_sq = np.dot(h_star_norm, h_star_norm)  # ≈ 1
+    dot_h_t_h_star = np.dot(h_t_norm, h_star_norm)
     gram_determinant = norm_h_t_sq * norm_h_star_sq - (dot_h_t_h_star ** 2)
     gram_determinant = max(abs(gram_determinant), gram_threshold)  # 取绝对值避免负数
     
     # 7. 计算原始曲率 K₀(t)（未修正）
+    # 严格按照文档定义：Cov(h,h*)·‖h‖² - (h·h*)·Var(h)
+    # 其中 Cov(h(t),h(t)) = Var(h(t))
     numerator = cov_h_t_h_star * norm_h_t_sq - dot_h_t_h_star * var_h_t
     denominator = gram_determinant * var_h_t + epsilon
     K_0 = numerator / denominator
@@ -166,11 +168,11 @@ def compute_local_sectional_curvature(
     print(f"\n【统计参数】")
     print(f"  协方差 Cov(h,h*): {cov_h_t_h_star:.6f}")
     print(f"  方差 Var(h): {var_h_t:.6f}")
-    print(f"  范数平方 ‖h‖²: {norm_h_t_sq:.6f}")
+    print(f"  范数平方 ||h||^2: {norm_h_t_sq:.6f}")
     print(f"  内积 h·h*: {dot_h_t_h_star:.6f}")
     print(f"  Gram行列式: {gram_determinant:.6e}")
     print(f"\n【曲率计算】")
-    print(f"  分子 = Cov·‖h‖² - (h·h*)·Var = {cov_h_t_h_star:.6f}×{norm_h_t_sq:.6f} - {dot_h_t_h_star:.6f}×{var_h_t:.6f}")
+    print(f"  分子 = Cov·||h||^2 - (h·h*)·Var = {cov_h_t_h_star:.6f}×{norm_h_t_sq:.6f} - {dot_h_t_h_star:.6f}×{var_h_t:.6f}")
     print(f"       = {cov_h_t_h_star * norm_h_t_sq:.6f} - {dot_h_t_h_star * var_h_t:.6f} = {numerator:.6f}")
     print(f"  分母 = Gram·Var + ε = {gram_determinant:.6e}×{var_h_t:.6f} + {epsilon} = {denominator:.6e}")
     print(f"  K₀(t) = 分子/分母 = {K_0:.6f}")
