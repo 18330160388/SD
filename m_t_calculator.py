@@ -389,7 +389,7 @@ def compute_m_t(
     # 1. 提取形态特征向量m(t)
     m_t = morph_extractor.extract(token_text)
     if m_t is None:
-        M_t_result = 0.3  # 非单字token默认中等匹配度（文档2边界条件）
+        M_t_result = 0.0
         print(f"  ❌ 形态特征提取失败（非中文字符）")
         print(f"  ➜ M(t) = {M_t_result:.6f} (默认值)")
         print(f"{'='*60}\n")

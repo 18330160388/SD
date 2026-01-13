@@ -10,7 +10,8 @@ def compute_d_t(
     window_size: int = 3,
     sim_threshold: float = 0.5,
     epsilon: float = 1e-6,
-    precomputed_m_t: Optional[float] = None
+    precomputed_m_t: Optional[float] = None,
+    return_diag: bool = False,
 ) -> float:
     """
     计算局部语义分布距离 D(t)（严格按文档定义）
@@ -30,7 +31,7 @@ def compute_d_t(
         precomputed_m_t: 预计算的形态-语义匹配度 M(t)
     
     Returns:
-        D_t: 语义分布距离，标量值 ∈ [0, √d]
+        D_t: 语义分布距离，标量值 ∈ [0, 2]
     """
     # 1. 转换为numpy数组
     h_t_np = h_t.detach().cpu().numpy() if h_t.requires_grad else h_t.cpu().numpy()
@@ -60,13 +61,87 @@ def compute_d_t(
             S_eff.append(h_s)
             S_eff_indices.append(global_idx)
     
-    # 如果有效向量数 < 2，无法计算两两距离
+    # 记录原始有效集大小
+    seff_size = len(S_eff)
+
+    fallback_used = False
+
+    # If there are no effective neighbors at all (Seff_size == 0),
+    # return 0.0 directly to avoid fallback producing large noisy values.
+    if seff_size == 0:
+        D_t = 0.0
+        if return_diag:
+            diag = {
+                'Seff_size': seff_size,
+                'fallback_used': False,
+                'M_t': float(precomputed_m_t) if precomputed_m_t is not None else None,
+                'D_t': float(D_t)
+            }
+            return float(D_t), diag
+        return float(D_t)
+
+    # 如果有效向量数 < 2，使用fallback策略：
+    # - 尝试使用局部窗口（排除自身）作为后备集合，计算 h_t 与每个后备向量的归一化距离平均值
+    # - 仅在窗口为空时才返回0.0（极短句或仅1个token情况）
     if len(S_eff) < 2:
-        return 0.0
+        fallback_used = True
+        # 后备集合：local_window中排除自身
+        fallback_candidates = []
+        for idx, h_s in enumerate(local_window):
+            global_idx = start_idx + idx
+            if global_idx == token_idx:
+                continue
+            fallback_candidates.append(h_s)
+
+        if len(fallback_candidates) == 0:
+            D_t = 0.0
+            if return_diag:
+                diag = {
+                    'Seff_size': seff_size,
+                    'fallback_used': True,
+                    'M_t': float(precomputed_m_t) if precomputed_m_t is not None else None,
+                    'D_t': float(D_t)
+                }
+                return float(D_t), diag
+            return float(D_t)
+
+        # 计算 h_t 与每个后备向量的归一化欧氏距离（单边平均）
+        fallback_arr = np.array(fallback_candidates)
+        n_fb = fallback_arr.shape[0]
+        total_fb_dist = 0.0
+        h_t_vec = h_t_np
+        h_t_norm = np.linalg.norm(h_t_vec)
+        for h_s in fallback_arr:
+            euclidean_dist = np.linalg.norm(h_t_vec - h_s)
+            norm_i = h_t_norm
+            norm_j = np.linalg.norm(h_s)
+            norm_factor = max(norm_i, norm_j) + epsilon
+            normalized_dist = euclidean_dist / norm_factor
+            total_fb_dist += normalized_dist
+
+        avg_distance = total_fb_dist / float(n_fb)
+        # 已使用 fallback，直接应用形态修正并返回
+        if fallback_used:
+            if precomputed_m_t is not None:
+                M_t = np.clip(precomputed_m_t, 0.0, 1.0)
+                beta_M = 1.0 - 0.3 * M_t
+            else:
+                beta_M = 1.0
+
+            D_t = (avg_distance * beta_M)
+            if return_diag:
+                diag = {
+                    'Seff_size': seff_size,
+                    'fallback_used': True,
+                    'M_t': float(precomputed_m_t) if precomputed_m_t is not None else None,
+                    'D_t': float(D_t)
+                }
+                return float(D_t), diag
+            return float(D_t)
     
     S_eff = np.array(S_eff)
     
-    # 4. 计算两两配对的归一化欧氏距离
+    # 4. 计算两两配对的归一化欧氏距离（使用 L2 距离 / L2 范数，按文档）
     n_eff = len(S_eff)
     N_pair = n_eff * (n_eff - 1) // 2  # 组合数 C(n,2)
     
@@ -75,17 +150,16 @@ def compute_d_t(
         for j in range(i + 1, n_eff):
             h_i = S_eff[i]
             h_j = S_eff[j]
-            
-            # 欧氏距离平方
-            euclidean_dist_sq = np.sum((h_i - h_j) ** 2)
-            
-            # 归一化因子：max(||h_i||², ||h_j||²)
-            norm_i_sq = np.dot(h_i, h_i)
-            norm_j_sq = np.dot(h_j, h_j)
-            norm_factor = max(norm_i_sq, norm_j_sq) + epsilon
-            
-            # 归一化距离
-            normalized_dist = euclidean_dist_sq / norm_factor
+            # L2 距离（非平方）
+            euclidean_dist = np.linalg.norm(h_i - h_j)
+
+            # 归一化因子：max(||h_i||, ||h_j||)
+            norm_i = np.linalg.norm(h_i)
+            norm_j = np.linalg.norm(h_j)
+            norm_factor = max(norm_i, norm_j) + epsilon
+
+            # 归一化距离（文档：||h_i-h_j|| / max(||h_i||,||h_j||)）
+            normalized_dist = euclidean_dist / norm_factor
             total_distance += normalized_dist
     
     # 5. 平均距离
@@ -102,7 +176,16 @@ def compute_d_t(
     
     # 7. 最终 D(t)
     D_t = avg_distance * beta_M
-    
+
+    if return_diag:
+        diag = {
+            'Seff_size': seff_size,
+            'fallback_used': bool(fallback_used),
+            'M_t': float(precomputed_m_t) if precomputed_m_t is not None else None,
+            'D_t': float(D_t)
+        }
+        return float(D_t), diag
+
     return float(D_t)
 
 
@@ -111,7 +194,8 @@ def compute_d_t_batch(
     window_size: int = 3,
     sim_threshold: float = 0.5,
     epsilon: float = 1e-6,
-    precomputed_m_t_list: Optional[np.ndarray] = None
+    precomputed_m_t_list: Optional[np.ndarray] = None,
+    return_diagnostics: bool = False
 ) -> np.ndarray:
     """
     批量计算所有token的D(t)
@@ -128,12 +212,13 @@ def compute_d_t_batch(
     """
     token_num = hidden_states.shape[0]
     D_t_list = []
+    diagnostics = []
     
     for token_idx in range(token_num):
         h_t = hidden_states[token_idx]
         precomputed_m_t = precomputed_m_t_list[token_idx] if precomputed_m_t_list is not None else None
         
-        D_t = compute_d_t(
+        result = compute_d_t(
             h_t=h_t,
             hidden_states=hidden_states,
             token_idx=token_idx,
@@ -142,10 +227,19 @@ def compute_d_t_batch(
             sim_threshold=sim_threshold,
             epsilon=epsilon,
             precomputed_m_t=precomputed_m_t
-        )
-        D_t_list.append(D_t)
+        , return_diag=return_diagnostics)
+
+        if return_diagnostics:
+            D_t, diag = result
+            D_t_list.append(D_t)
+            diagnostics.append(diag)
+        else:
+            D_t_list.append(result)
     
-    return np.array(D_t_list)
+    D_arr = np.array(D_t_list)
+    if return_diagnostics:
+        return D_arr, diagnostics
+    return D_arr
 
 
 # 测试代码（单独运行验证）
