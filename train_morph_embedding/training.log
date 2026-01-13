@@ -1,0 +1,440 @@
+2026-01-13 09:46:31,506 - INFO - ======================================================================
+2026-01-13 09:46:31,507 - INFO - MorphEmbedding训练开始 | 数据: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_11\training_data.pkl
+2026-01-13 09:46:31,507 - INFO - ======================================================================
+2026-01-13 09:46:31,507 - INFO - [1/5] 加载数据...
+2026-01-13 09:47:20,980 - INFO - ======================================================================
+2026-01-13 09:47:20,980 - INFO - MorphEmbedding训练开始 | 数据: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_11\training_data.pkl
+2026-01-13 09:47:20,980 - INFO - ======================================================================
+2026-01-13 09:47:20,982 - INFO - [1/5] 加载数据...
+2026-01-13 09:47:20,992 - INFO - 加载训练数据: 164 个样本
+2026-01-13 09:47:20,993 - INFO -   训练集: 147 样本
+2026-01-13 09:47:20,993 - INFO -   验证集: 17 样本
+2026-01-13 09:47:20,993 - INFO -   Batch大小: 64
+2026-01-13 09:47:20,994 - INFO - [2/5] 初始化模型...
+2026-01-13 09:47:21,071 - INFO -   模型: MorphEmbedding(254 -> 896)
+2026-01-13 09:47:21,071 - INFO -   设备: cuda
+2026-01-13 09:47:21,071 - INFO -   参数量: 230,272
+2026-01-13 09:47:21,072 - INFO - [3/5] 配置优化器...
+2026-01-13 09:47:21,783 - INFO -   优化器: Adam
+2026-01-13 09:47:21,784 - INFO -   学习率: 0.001
+2026-01-13 09:47:21,784 - INFO -   权重衰减: 1e-05
+2026-01-13 09:47:21,784 - INFO - [4/5] 开始训练 (3000 epochs, early stop patience=100)...
+2026-01-13 09:47:21,905 - INFO - Epoch   1/3000 | Train Loss: 1.969457 | Val Loss: 1.930652
+2026-01-13 09:47:21,907 - INFO -   → 保存最佳模型 (Val Loss: 1.930652)
+2026-01-13 09:47:21,913 - INFO - Epoch   2/3000 | Train Loss: 1.891188 | Val Loss: 1.878849
+2026-01-13 09:47:21,915 - INFO -   → 保存最佳模型 (Val Loss: 1.878849)
+2026-01-13 09:47:21,920 - INFO - Epoch   3/3000 | Train Loss: 1.823698 | Val Loss: 1.829992
+2026-01-13 09:47:21,921 - INFO -   → 保存最佳模型 (Val Loss: 1.829992)
+2026-01-13 09:47:21,927 - INFO - Epoch   4/3000 | Train Loss: 1.758594 | Val Loss: 1.783916
+2026-01-13 09:47:21,928 - INFO -   → 保存最佳模型 (Val Loss: 1.783916)
+2026-01-13 09:47:21,935 - INFO - Epoch   5/3000 | Train Loss: 1.683672 | Val Loss: 1.740382
+2026-01-13 09:47:21,936 - INFO -   → 保存最佳模型 (Val Loss: 1.740382)
+2026-01-13 09:47:21,942 - INFO - Epoch   6/3000 | Train Loss: 1.617277 | Val Loss: 1.699135
+2026-01-13 09:47:21,943 - INFO -   → 保存最佳模型 (Val Loss: 1.699135)
+2026-01-13 09:47:21,948 - INFO - Epoch   7/3000 | Train Loss: 1.567290 | Val Loss: 1.660069
+2026-01-13 09:47:21,951 - INFO -   → 保存最佳模型 (Val Loss: 1.660069)
+2026-01-13 09:47:21,956 - INFO - Epoch   8/3000 | Train Loss: 1.514949 | Val Loss: 1.623202
+2026-01-13 09:47:21,957 - INFO -   → 保存最佳模型 (Val Loss: 1.623202)
+2026-01-13 09:47:21,964 - INFO - Epoch   9/3000 | Train Loss: 1.472471 | Val Loss: 1.588655
+2026-01-13 09:47:21,966 - INFO -   → 保存最佳模型 (Val Loss: 1.588655)
+2026-01-13 09:47:21,971 - INFO - Epoch  10/3000 | Train Loss: 1.387194 | Val Loss: 1.555455
+2026-01-13 09:47:21,973 - INFO -   → 保存最佳模型 (Val Loss: 1.555455)
+2026-01-13 09:47:21,978 - INFO - Epoch  11/3000 | Train Loss: 1.344966 | Val Loss: 1.523518
+2026-01-13 09:47:21,980 - INFO -   → 保存最佳模型 (Val Loss: 1.523518)
+2026-01-13 09:47:21,985 - INFO - Epoch  12/3000 | Train Loss: 1.312780 | Val Loss: 1.492721
+2026-01-13 09:47:21,987 - INFO -   → 保存最佳模型 (Val Loss: 1.492721)
+2026-01-13 09:47:21,993 - INFO - Epoch  13/3000 | Train Loss: 1.275754 | Val Loss: 1.462786
+2026-01-13 09:47:21,995 - INFO -   → 保存最佳模型 (Val Loss: 1.462786)
+2026-01-13 09:47:22,001 - INFO - Epoch  14/3000 | Train Loss: 1.222379 | Val Loss: 1.432805
+2026-01-13 09:47:22,003 - INFO -   → 保存最佳模型 (Val Loss: 1.432805)
+2026-01-13 09:47:22,010 - INFO - Epoch  15/3000 | Train Loss: 1.195779 | Val Loss: 1.403223
+2026-01-13 09:47:22,012 - INFO -   → 保存最佳模型 (Val Loss: 1.403223)
+2026-01-13 09:47:22,019 - INFO - Epoch  16/3000 | Train Loss: 1.142620 | Val Loss: 1.373168
+2026-01-13 09:47:22,021 - INFO -   → 保存最佳模型 (Val Loss: 1.373168)
+2026-01-13 09:47:22,027 - INFO - Epoch  17/3000 | Train Loss: 1.096577 | Val Loss: 1.342476
+2026-01-13 09:47:22,029 - INFO -   → 保存最佳模型 (Val Loss: 1.342476)
+2026-01-13 09:47:22,034 - INFO - Epoch  18/3000 | Train Loss: 1.056769 | Val Loss: 1.311964
+2026-01-13 09:47:22,036 - INFO -   → 保存最佳模型 (Val Loss: 1.311964)
+2026-01-13 09:47:22,042 - INFO - Epoch  19/3000 | Train Loss: 0.998738 | Val Loss: 1.281510
+2026-01-13 09:47:22,043 - INFO -   → 保存最佳模型 (Val Loss: 1.281510)
+2026-01-13 09:47:22,049 - INFO - Epoch  20/3000 | Train Loss: 0.988125 | Val Loss: 1.251670
+2026-01-13 09:47:22,051 - INFO -   → 保存最佳模型 (Val Loss: 1.251670)
+2026-01-13 09:47:22,055 - INFO - Epoch  21/3000 | Train Loss: 0.924781 | Val Loss: 1.221434
+2026-01-13 09:47:22,057 - INFO -   → 保存最佳模型 (Val Loss: 1.221434)
+2026-01-13 09:47:22,063 - INFO - Epoch  22/3000 | Train Loss: 0.885986 | Val Loss: 1.190962
+2026-01-13 09:47:22,064 - INFO -   → 保存最佳模型 (Val Loss: 1.190962)
+2026-01-13 09:47:22,070 - INFO - Epoch  23/3000 | Train Loss: 0.863550 | Val Loss: 1.161301
+2026-01-13 09:47:22,072 - INFO -   → 保存最佳模型 (Val Loss: 1.161301)
+2026-01-13 09:47:22,078 - INFO - Epoch  24/3000 | Train Loss: 0.807552 | Val Loss: 1.132430
+2026-01-13 09:47:22,079 - INFO -   → 保存最佳模型 (Val Loss: 1.132430)
+2026-01-13 09:47:22,085 - INFO - Epoch  25/3000 | Train Loss: 0.768221 | Val Loss: 1.106330
+2026-01-13 09:47:22,087 - INFO -   → 保存最佳模型 (Val Loss: 1.106330)
+2026-01-13 09:47:22,093 - INFO - Epoch  26/3000 | Train Loss: 0.751848 | Val Loss: 1.082117
+2026-01-13 09:47:22,095 - INFO -   → 保存最佳模型 (Val Loss: 1.082117)
+2026-01-13 09:47:22,100 - INFO - Epoch  27/3000 | Train Loss: 0.694577 | Val Loss: 1.059663
+2026-01-13 09:47:22,102 - INFO -   → 保存最佳模型 (Val Loss: 1.059663)
+2026-01-13 09:47:22,108 - INFO - Epoch  28/3000 | Train Loss: 0.674079 | Val Loss: 1.039862
+2026-01-13 09:47:22,110 - INFO -   → 保存最佳模型 (Val Loss: 1.039862)
+2026-01-13 09:47:22,115 - INFO - Epoch  29/3000 | Train Loss: 0.657089 | Val Loss: 1.022730
+2026-01-13 09:47:22,117 - INFO -   → 保存最佳模型 (Val Loss: 1.022730)
+2026-01-13 09:47:22,123 - INFO - Epoch  30/3000 | Train Loss: 0.610167 | Val Loss: 1.008935
+2026-01-13 09:47:22,124 - INFO -   → 保存最佳模型 (Val Loss: 1.008935)
+2026-01-13 09:47:22,130 - INFO - Epoch  31/3000 | Train Loss: 0.606519 | Val Loss: 0.997628
+2026-01-13 09:47:22,132 - INFO -   → 保存最佳模型 (Val Loss: 0.997628)
+2026-01-13 09:47:22,138 - INFO - Epoch  32/3000 | Train Loss: 0.576467 | Val Loss: 0.987840
+2026-01-13 09:47:22,139 - INFO -   → 保存最佳模型 (Val Loss: 0.987840)
+2026-01-13 09:47:22,144 - INFO - Epoch  33/3000 | Train Loss: 0.549509 | Val Loss: 0.979469
+2026-01-13 09:47:22,146 - INFO -   → 保存最佳模型 (Val Loss: 0.979469)
+2026-01-13 09:47:22,152 - INFO - Epoch  34/3000 | Train Loss: 0.527021 | Val Loss: 0.972630
+2026-01-13 09:47:22,154 - INFO -   → 保存最佳模型 (Val Loss: 0.972630)
+2026-01-13 09:47:22,159 - INFO - Epoch  35/3000 | Train Loss: 0.529873 | Val Loss: 0.967130
+2026-01-13 09:47:22,161 - INFO -   → 保存最佳模型 (Val Loss: 0.967130)
+2026-01-13 09:47:22,167 - INFO - Epoch  36/3000 | Train Loss: 0.533306 | Val Loss: 0.962677
+2026-01-13 09:47:22,168 - INFO -   → 保存最佳模型 (Val Loss: 0.962677)
+2026-01-13 09:47:22,173 - INFO - Epoch  37/3000 | Train Loss: 0.528156 | Val Loss: 0.957569
+2026-01-13 09:47:22,175 - INFO -   → 保存最佳模型 (Val Loss: 0.957569)
+2026-01-13 09:47:22,181 - INFO - Epoch  38/3000 | Train Loss: 0.508285 | Val Loss: 0.953875
+2026-01-13 09:47:22,182 - INFO -   → 保存最佳模型 (Val Loss: 0.953875)
+2026-01-13 09:47:22,188 - INFO - Epoch  39/3000 | Train Loss: 0.503895 | Val Loss: 0.951827
+2026-01-13 09:47:22,189 - INFO -   → 保存最佳模型 (Val Loss: 0.951827)
+2026-01-13 09:47:22,195 - INFO - Epoch  40/3000 | Train Loss: 0.492903 | Val Loss: 0.951223
+2026-01-13 09:47:22,197 - INFO -   → 保存最佳模型 (Val Loss: 0.951223)
+2026-01-13 09:47:22,202 - INFO - Epoch  41/3000 | Train Loss: 0.470450 | Val Loss: 0.950193
+2026-01-13 09:47:22,204 - INFO -   → 保存最佳模型 (Val Loss: 0.950193)
+2026-01-13 09:47:22,209 - INFO - Epoch  42/3000 | Train Loss: 0.451651 | Val Loss: 0.949841
+2026-01-13 09:47:22,210 - INFO -   → 保存最佳模型 (Val Loss: 0.949841)
+2026-01-13 09:47:22,216 - INFO - Epoch  43/3000 | Train Loss: 0.459685 | Val Loss: 0.949799
+2026-01-13 09:47:22,219 - INFO -   → 保存最佳模型 (Val Loss: 0.949799)
+2026-01-13 09:47:22,223 - INFO - Epoch  44/3000 | Train Loss: 0.419900 | Val Loss: 0.948803
+2026-01-13 09:47:22,225 - INFO -   → 保存最佳模型 (Val Loss: 0.948803)
+2026-01-13 09:47:22,232 - INFO - Epoch  45/3000 | Train Loss: 0.408720 | Val Loss: 0.947523
+2026-01-13 09:47:22,233 - INFO -   → 保存最佳模型 (Val Loss: 0.947523)
+2026-01-13 09:47:22,239 - INFO - Epoch  46/3000 | Train Loss: 0.434144 | Val Loss: 0.947293
+2026-01-13 09:47:22,240 - INFO -   → 保存最佳模型 (Val Loss: 0.947293)
+2026-01-13 09:47:22,245 - INFO - Epoch  47/3000 | Train Loss: 0.410264 | Val Loss: 0.947818
+2026-01-13 09:47:22,251 - INFO - Epoch  48/3000 | Train Loss: 0.414043 | Val Loss: 0.948936
+2026-01-13 09:47:22,257 - INFO - Epoch  49/3000 | Train Loss: 0.429390 | Val Loss: 0.951195
+2026-01-13 09:47:22,263 - INFO - Epoch  50/3000 | Train Loss: 0.405897 | Val Loss: 0.952089
+2026-01-13 09:47:22,269 - INFO - Epoch  51/3000 | Train Loss: 0.411024 | Val Loss: 0.954083
+2026-01-13 09:47:22,274 - INFO - Epoch  52/3000 | Train Loss: 0.394131 | Val Loss: 0.956014
+2026-01-13 09:47:22,280 - INFO - Epoch  53/3000 | Train Loss: 0.396654 | Val Loss: 0.956914
+2026-01-13 09:47:22,285 - INFO - Epoch  54/3000 | Train Loss: 0.375363 | Val Loss: 0.957667
+2026-01-13 09:47:22,290 - INFO - Epoch  55/3000 | Train Loss: 0.377971 | Val Loss: 0.956867
+2026-01-13 09:47:22,295 - INFO - Epoch  56/3000 | Train Loss: 0.378145 | Val Loss: 0.956538
+2026-01-13 09:47:22,301 - INFO - Epoch  57/3000 | Train Loss: 0.394668 | Val Loss: 0.957257
+2026-01-13 09:47:22,306 - INFO - Epoch  58/3000 | Train Loss: 0.353350 | Val Loss: 0.958078
+2026-01-13 09:47:22,311 - INFO - Epoch  59/3000 | Train Loss: 0.371488 | Val Loss: 0.957046
+2026-01-13 09:47:22,317 - INFO - Epoch  60/3000 | Train Loss: 0.374983 | Val Loss: 0.957703
+2026-01-13 09:47:22,322 - INFO - Epoch  61/3000 | Train Loss: 0.374506 | Val Loss: 0.956386
+2026-01-13 09:47:22,327 - INFO - Epoch  62/3000 | Train Loss: 0.358788 | Val Loss: 0.954929
+2026-01-13 09:47:22,333 - INFO - Epoch  63/3000 | Train Loss: 0.362478 | Val Loss: 0.954506
+2026-01-13 09:47:22,338 - INFO - Epoch  64/3000 | Train Loss: 0.356200 | Val Loss: 0.954133
+2026-01-13 09:47:22,343 - INFO - Epoch  65/3000 | Train Loss: 0.354602 | Val Loss: 0.953739
+2026-01-13 09:47:22,349 - INFO - Epoch  66/3000 | Train Loss: 0.350810 | Val Loss: 0.953990
+2026-01-13 09:47:22,354 - INFO - Epoch  67/3000 | Train Loss: 0.331093 | Val Loss: 0.953929
+2026-01-13 09:47:22,360 - INFO - Epoch  68/3000 | Train Loss: 0.357411 | Val Loss: 0.954682
+2026-01-13 09:47:22,366 - INFO - Epoch  69/3000 | Train Loss: 0.351881 | Val Loss: 0.954883
+2026-01-13 09:47:22,371 - INFO - Epoch  70/3000 | Train Loss: 0.342203 | Val Loss: 0.955336
+2026-01-13 09:47:22,376 - INFO - Epoch  71/3000 | Train Loss: 0.324067 | Val Loss: 0.955430
+2026-01-13 09:47:22,382 - INFO - Epoch  72/3000 | Train Loss: 0.351683 | Val Loss: 0.954707
+2026-01-13 09:47:22,387 - INFO - Epoch  73/3000 | Train Loss: 0.353170 | Val Loss: 0.955067
+2026-01-13 09:47:22,392 - INFO - Epoch  74/3000 | Train Loss: 0.337892 | Val Loss: 0.957322
+2026-01-13 09:47:22,398 - INFO - Epoch  75/3000 | Train Loss: 0.354257 | Val Loss: 0.959296
+2026-01-13 09:47:22,403 - INFO - Epoch  76/3000 | Train Loss: 0.343533 | Val Loss: 0.960822
+2026-01-13 09:47:22,409 - INFO - Epoch  77/3000 | Train Loss: 0.354499 | Val Loss: 0.963907
+2026-01-13 09:47:22,414 - INFO - Epoch  78/3000 | Train Loss: 0.311756 | Val Loss: 0.967246
+2026-01-13 09:47:22,419 - INFO - Epoch  79/3000 | Train Loss: 0.350113 | Val Loss: 0.968252
+2026-01-13 09:47:22,424 - INFO - Epoch  80/3000 | Train Loss: 0.348407 | Val Loss: 0.967832
+2026-01-13 09:47:22,430 - INFO - Epoch  81/3000 | Train Loss: 0.336311 | Val Loss: 0.968523
+2026-01-13 09:47:22,435 - INFO - Epoch  82/3000 | Train Loss: 0.332413 | Val Loss: 0.970305
+2026-01-13 09:47:22,440 - INFO - Epoch  83/3000 | Train Loss: 0.343459 | Val Loss: 0.973968
+2026-01-13 09:47:22,446 - INFO - Epoch  84/3000 | Train Loss: 0.349625 | Val Loss: 0.974869
+2026-01-13 09:47:22,452 - INFO - Epoch  85/3000 | Train Loss: 0.332053 | Val Loss: 0.971952
+2026-01-13 09:47:22,457 - INFO - Epoch  86/3000 | Train Loss: 0.322355 | Val Loss: 0.970549
+2026-01-13 09:47:22,464 - INFO - Epoch  87/3000 | Train Loss: 0.353725 | Val Loss: 0.970452
+2026-01-13 09:47:22,469 - INFO - Epoch  88/3000 | Train Loss: 0.334568 | Val Loss: 0.972522
+2026-01-13 09:47:22,474 - INFO - Epoch  89/3000 | Train Loss: 0.362324 | Val Loss: 0.972830
+2026-01-13 09:47:22,479 - INFO - Epoch  90/3000 | Train Loss: 0.311196 | Val Loss: 0.973997
+2026-01-13 09:47:22,485 - INFO - Epoch  91/3000 | Train Loss: 0.333600 | Val Loss: 0.974676
+2026-01-13 09:47:22,490 - INFO - Epoch  92/3000 | Train Loss: 0.333525 | Val Loss: 0.975160
+2026-01-13 09:47:22,495 - INFO - Epoch  93/3000 | Train Loss: 0.311967 | Val Loss: 0.976000
+2026-01-13 09:47:22,500 - INFO - Epoch  94/3000 | Train Loss: 0.319132 | Val Loss: 0.977315
+2026-01-13 09:47:22,505 - INFO - Epoch  95/3000 | Train Loss: 0.299518 | Val Loss: 0.981777
+2026-01-13 09:47:22,511 - INFO - Epoch  96/3000 | Train Loss: 0.311670 | Val Loss: 0.984445
+2026-01-13 09:47:22,516 - INFO - Epoch  97/3000 | Train Loss: 0.321984 | Val Loss: 0.984077
+2026-01-13 09:47:22,521 - INFO - Epoch  98/3000 | Train Loss: 0.308009 | Val Loss: 0.982986
+2026-01-13 09:47:22,528 - INFO - Epoch  99/3000 | Train Loss: 0.332765 | Val Loss: 0.983487
+2026-01-13 09:47:22,534 - INFO - Epoch 100/3000 | Train Loss: 0.313622 | Val Loss: 0.985317
+2026-01-13 09:47:22,540 - INFO - Epoch 101/3000 | Train Loss: 0.325857 | Val Loss: 0.985490
+2026-01-13 09:47:22,545 - INFO - Epoch 102/3000 | Train Loss: 0.319985 | Val Loss: 0.986231
+2026-01-13 09:47:22,551 - INFO - Epoch 103/3000 | Train Loss: 0.332753 | Val Loss: 0.986910
+2026-01-13 09:47:22,557 - INFO - Epoch 104/3000 | Train Loss: 0.324889 | Val Loss: 0.987567
+2026-01-13 09:47:22,563 - INFO - Epoch 105/3000 | Train Loss: 0.330676 | Val Loss: 0.986901
+2026-01-13 09:47:22,569 - INFO - Epoch 106/3000 | Train Loss: 0.319151 | Val Loss: 0.987296
+2026-01-13 09:47:22,574 - INFO - Epoch 107/3000 | Train Loss: 0.332325 | Val Loss: 0.985816
+2026-01-13 09:47:22,580 - INFO - Epoch 108/3000 | Train Loss: 0.330713 | Val Loss: 0.984839
+2026-01-13 09:47:22,585 - INFO - Epoch 109/3000 | Train Loss: 0.315453 | Val Loss: 0.985694
+2026-01-13 09:47:22,591 - INFO - Epoch 110/3000 | Train Loss: 0.340679 | Val Loss: 0.984665
+2026-01-13 09:47:22,596 - INFO - Epoch 111/3000 | Train Loss: 0.316381 | Val Loss: 0.987315
+2026-01-13 09:47:22,602 - INFO - Epoch 112/3000 | Train Loss: 0.316258 | Val Loss: 0.990903
+2026-01-13 09:47:22,608 - INFO - Epoch 113/3000 | Train Loss: 0.332525 | Val Loss: 0.992037
+2026-01-13 09:47:22,613 - INFO - Epoch 114/3000 | Train Loss: 0.305138 | Val Loss: 0.993791
+2026-01-13 09:47:22,619 - INFO - Epoch 115/3000 | Train Loss: 0.305647 | Val Loss: 0.994830
+2026-01-13 09:47:22,624 - INFO - Epoch 116/3000 | Train Loss: 0.291208 | Val Loss: 0.995750
+2026-01-13 09:47:22,630 - INFO - Epoch 117/3000 | Train Loss: 0.297052 | Val Loss: 0.995027
+2026-01-13 09:47:22,635 - INFO - Epoch 118/3000 | Train Loss: 0.297274 | Val Loss: 0.992911
+2026-01-13 09:47:22,641 - INFO - Epoch 119/3000 | Train Loss: 0.306725 | Val Loss: 0.992700
+2026-01-13 09:47:22,646 - INFO - Epoch 120/3000 | Train Loss: 0.299683 | Val Loss: 0.993638
+2026-01-13 09:47:22,652 - INFO - Epoch 121/3000 | Train Loss: 0.322728 | Val Loss: 0.995810
+2026-01-13 09:47:22,658 - INFO - Epoch 122/3000 | Train Loss: 0.325045 | Val Loss: 0.997355
+2026-01-13 09:47:22,664 - INFO - Epoch 123/3000 | Train Loss: 0.334087 | Val Loss: 0.999420
+2026-01-13 09:47:22,669 - INFO - Epoch 124/3000 | Train Loss: 0.335942 | Val Loss: 1.001434
+2026-01-13 09:47:22,674 - INFO - Epoch 125/3000 | Train Loss: 0.306755 | Val Loss: 1.002874
+2026-01-13 09:47:22,679 - INFO - Epoch 126/3000 | Train Loss: 0.315334 | Val Loss: 1.003030
+2026-01-13 09:47:22,685 - INFO - Epoch 127/3000 | Train Loss: 0.325301 | Val Loss: 1.003143
+2026-01-13 09:47:22,690 - INFO - Epoch 128/3000 | Train Loss: 0.308443 | Val Loss: 1.004886
+2026-01-13 09:47:22,695 - INFO - Epoch 129/3000 | Train Loss: 0.302889 | Val Loss: 1.006144
+2026-01-13 09:47:22,701 - INFO - Epoch 130/3000 | Train Loss: 0.327823 | Val Loss: 1.006422
+2026-01-13 09:47:22,706 - INFO - Epoch 131/3000 | Train Loss: 0.329830 | Val Loss: 1.007608
+2026-01-13 09:47:22,712 - INFO - Epoch 132/3000 | Train Loss: 0.305325 | Val Loss: 1.009043
+2026-01-13 09:47:22,718 - INFO - Epoch 133/3000 | Train Loss: 0.326626 | Val Loss: 1.009307
+2026-01-13 09:47:22,723 - INFO - Epoch 134/3000 | Train Loss: 0.308203 | Val Loss: 1.009351
+2026-01-13 09:47:22,729 - INFO - Epoch 135/3000 | Train Loss: 0.319373 | Val Loss: 1.008503
+2026-01-13 09:47:22,735 - INFO - Epoch 136/3000 | Train Loss: 0.317217 | Val Loss: 1.010392
+2026-01-13 09:47:22,739 - INFO - Epoch 137/3000 | Train Loss: 0.316492 | Val Loss: 1.012748
+2026-01-13 09:47:22,746 - INFO - Epoch 138/3000 | Train Loss: 0.309459 | Val Loss: 1.016039
+2026-01-13 09:47:22,751 - INFO - Epoch 139/3000 | Train Loss: 0.296157 | Val Loss: 1.015427
+2026-01-13 09:47:22,756 - INFO - Epoch 140/3000 | Train Loss: 0.321134 | Val Loss: 1.015167
+2026-01-13 09:47:22,762 - INFO - Epoch 141/3000 | Train Loss: 0.300635 | Val Loss: 1.018331
+2026-01-13 09:47:22,767 - INFO - Epoch 142/3000 | Train Loss: 0.305400 | Val Loss: 1.021420
+2026-01-13 09:47:22,773 - INFO - Epoch 143/3000 | Train Loss: 0.328185 | Val Loss: 1.023830
+2026-01-13 09:47:22,779 - INFO - Epoch 144/3000 | Train Loss: 0.318644 | Val Loss: 1.024979
+2026-01-13 09:47:22,784 - INFO - Epoch 145/3000 | Train Loss: 0.303393 | Val Loss: 1.027045
+2026-01-13 09:47:22,789 - INFO - Epoch 146/3000 | Train Loss: 0.322499 | Val Loss: 1.027882
+2026-01-13 09:47:22,789 - INFO - 
+  Early Stopping! 验证损失100轮未改善
+2026-01-13 09:47:22,789 - INFO -   最佳epoch: 46, 最佳Val Loss: 0.947293
+2026-01-13 09:47:22,790 - INFO - [5/5] 保存训练结果...
+2026-01-13 09:47:23,232 - INFO - 训练曲线已保存到 d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_11\training_curve.png
+2026-01-13 09:47:23,232 - INFO - 训练完成！
+2026-01-13 09:47:23,232 - INFO - 最佳验证损失: 0.947293
+2026-01-13 09:47:23,232 - INFO - 模型保存路径: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_11\morph_embedding_best.pt
+2026-01-13 09:47:23,232 - INFO - 训练曲线: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_11\training_curve.png
+2026-01-13 09:47:23,232 - INFO - ======================================================================
+2026-01-13 09:47:23,234 - INFO - ======================================================================
+2026-01-13 09:47:23,234 - INFO - MorphEmbedding训练开始 | 数据: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_12\training_data.pkl
+2026-01-13 09:47:23,234 - INFO - ======================================================================
+2026-01-13 09:47:23,234 - INFO - [1/5] 加载数据...
+2026-01-13 09:47:23,244 - INFO - 加载训练数据: 164 个样本
+2026-01-13 09:47:23,245 - INFO -   训练集: 147 样本
+2026-01-13 09:47:23,245 - INFO -   验证集: 17 样本
+2026-01-13 09:47:23,245 - INFO -   Batch大小: 64
+2026-01-13 09:47:23,245 - INFO - [2/5] 初始化模型...
+2026-01-13 09:47:23,247 - INFO -   模型: MorphEmbedding(254 -> 896)
+2026-01-13 09:47:23,247 - INFO -   设备: cuda
+2026-01-13 09:47:23,247 - INFO -   参数量: 230,272
+2026-01-13 09:47:23,247 - INFO - [3/5] 配置优化器...
+2026-01-13 09:47:23,248 - INFO -   优化器: Adam
+2026-01-13 09:47:23,248 - INFO -   学习率: 0.001
+2026-01-13 09:47:23,248 - INFO -   权重衰减: 1e-05
+2026-01-13 09:47:23,248 - INFO - [4/5] 开始训练 (3000 epochs, early stop patience=100)...
+2026-01-13 09:47:23,253 - INFO - Epoch   1/3000 | Train Loss: 2.002757 | Val Loss: 1.953356
+2026-01-13 09:47:23,255 - INFO -   → 保存最佳模型 (Val Loss: 1.953356)
+2026-01-13 09:47:23,261 - INFO - Epoch   2/3000 | Train Loss: 1.923925 | Val Loss: 1.911106
+2026-01-13 09:47:23,262 - INFO -   → 保存最佳模型 (Val Loss: 1.911106)
+2026-01-13 09:47:23,268 - INFO - Epoch   3/3000 | Train Loss: 1.857196 | Val Loss: 1.870578
+2026-01-13 09:47:23,270 - INFO -   → 保存最佳模型 (Val Loss: 1.870578)
+2026-01-13 09:47:23,275 - INFO - Epoch   4/3000 | Train Loss: 1.791567 | Val Loss: 1.832220
+2026-01-13 09:47:23,277 - INFO -   → 保存最佳模型 (Val Loss: 1.832220)
+2026-01-13 09:47:23,283 - INFO - Epoch   5/3000 | Train Loss: 1.704677 | Val Loss: 1.795514
+2026-01-13 09:47:23,285 - INFO -   → 保存最佳模型 (Val Loss: 1.795514)
+2026-01-13 09:47:23,290 - INFO - Epoch   6/3000 | Train Loss: 1.667792 | Val Loss: 1.760278
+2026-01-13 09:47:23,292 - INFO -   → 保存最佳模型 (Val Loss: 1.760278)
+2026-01-13 09:47:23,297 - INFO - Epoch   7/3000 | Train Loss: 1.590893 | Val Loss: 1.726676
+2026-01-13 09:47:23,299 - INFO -   → 保存最佳模型 (Val Loss: 1.726676)
+2026-01-13 09:47:23,304 - INFO - Epoch   8/3000 | Train Loss: 1.528018 | Val Loss: 1.694361
+2026-01-13 09:47:23,305 - INFO -   → 保存最佳模型 (Val Loss: 1.694361)
+2026-01-13 09:47:23,312 - INFO - Epoch   9/3000 | Train Loss: 1.490239 | Val Loss: 1.663767
+2026-01-13 09:47:23,314 - INFO -   → 保存最佳模型 (Val Loss: 1.663767)
+2026-01-13 09:47:23,319 - INFO - Epoch  10/3000 | Train Loss: 1.434157 | Val Loss: 1.634350
+2026-01-13 09:47:23,320 - INFO -   → 保存最佳模型 (Val Loss: 1.634350)
+2026-01-13 09:47:23,326 - INFO - Epoch  11/3000 | Train Loss: 1.392430 | Val Loss: 1.605941
+2026-01-13 09:47:23,328 - INFO -   → 保存最佳模型 (Val Loss: 1.605941)
+2026-01-13 09:47:23,333 - INFO - Epoch  12/3000 | Train Loss: 1.350456 | Val Loss: 1.577533
+2026-01-13 09:47:23,335 - INFO -   → 保存最佳模型 (Val Loss: 1.577533)
+2026-01-13 09:47:23,341 - INFO - Epoch  13/3000 | Train Loss: 1.286878 | Val Loss: 1.548948
+2026-01-13 09:47:23,343 - INFO -   → 保存最佳模型 (Val Loss: 1.548948)
+2026-01-13 09:47:23,349 - INFO - Epoch  14/3000 | Train Loss: 1.249211 | Val Loss: 1.520995
+2026-01-13 09:47:23,350 - INFO -   → 保存最佳模型 (Val Loss: 1.520995)
+2026-01-13 09:47:23,356 - INFO - Epoch  15/3000 | Train Loss: 1.206738 | Val Loss: 1.493118
+2026-01-13 09:47:23,358 - INFO -   → 保存最佳模型 (Val Loss: 1.493118)
+2026-01-13 09:47:23,364 - INFO - Epoch  16/3000 | Train Loss: 1.125857 | Val Loss: 1.465293
+2026-01-13 09:47:23,365 - INFO -   → 保存最佳模型 (Val Loss: 1.465293)
+2026-01-13 09:47:23,370 - INFO - Epoch  17/3000 | Train Loss: 1.113776 | Val Loss: 1.437152
+2026-01-13 09:47:23,372 - INFO -   → 保存最佳模型 (Val Loss: 1.437152)
+2026-01-13 09:47:23,377 - INFO - Epoch  18/3000 | Train Loss: 1.049298 | Val Loss: 1.408525
+2026-01-13 09:47:23,379 - INFO -   → 保存最佳模型 (Val Loss: 1.408525)
+2026-01-13 09:47:23,385 - INFO - Epoch  19/3000 | Train Loss: 0.972391 | Val Loss: 1.379175
+2026-01-13 09:47:23,387 - INFO -   → 保存最佳模型 (Val Loss: 1.379175)
+2026-01-13 09:47:23,392 - INFO - Epoch  20/3000 | Train Loss: 0.935589 | Val Loss: 1.350594
+2026-01-13 09:47:23,394 - INFO -   → 保存最佳模型 (Val Loss: 1.350594)
+2026-01-13 09:47:23,401 - INFO - Epoch  21/3000 | Train Loss: 0.913131 | Val Loss: 1.322263
+2026-01-13 09:47:23,403 - INFO -   → 保存最佳模型 (Val Loss: 1.322263)
+2026-01-13 09:47:23,409 - INFO - Epoch  22/3000 | Train Loss: 0.862252 | Val Loss: 1.293958
+2026-01-13 09:47:23,411 - INFO -   → 保存最佳模型 (Val Loss: 1.293958)
+2026-01-13 09:47:23,417 - INFO - Epoch  23/3000 | Train Loss: 0.798970 | Val Loss: 1.266169
+2026-01-13 09:47:23,419 - INFO -   → 保存最佳模型 (Val Loss: 1.266169)
+2026-01-13 09:47:23,427 - INFO - Epoch  24/3000 | Train Loss: 0.771372 | Val Loss: 1.240155
+2026-01-13 09:47:23,428 - INFO -   → 保存最佳模型 (Val Loss: 1.240155)
+2026-01-13 09:47:23,436 - INFO - Epoch  25/3000 | Train Loss: 0.712098 | Val Loss: 1.213809
+2026-01-13 09:47:23,437 - INFO -   → 保存最佳模型 (Val Loss: 1.213809)
+2026-01-13 09:47:23,444 - INFO - Epoch  26/3000 | Train Loss: 0.712155 | Val Loss: 1.189627
+2026-01-13 09:47:23,445 - INFO -   → 保存最佳模型 (Val Loss: 1.189627)
+2026-01-13 09:47:23,451 - INFO - Epoch  27/3000 | Train Loss: 0.680432 | Val Loss: 1.166422
+2026-01-13 09:47:23,452 - INFO -   → 保存最佳模型 (Val Loss: 1.166422)
+2026-01-13 09:47:23,457 - INFO - Epoch  28/3000 | Train Loss: 0.658239 | Val Loss: 1.145531
+2026-01-13 09:47:23,459 - INFO -   → 保存最佳模型 (Val Loss: 1.145531)
+2026-01-13 09:47:23,465 - INFO - Epoch  29/3000 | Train Loss: 0.625134 | Val Loss: 1.126014
+2026-01-13 09:47:23,466 - INFO -   → 保存最佳模型 (Val Loss: 1.126014)
+2026-01-13 09:47:23,471 - INFO - Epoch  30/3000 | Train Loss: 0.584850 | Val Loss: 1.108571
+2026-01-13 09:47:23,473 - INFO -   → 保存最佳模型 (Val Loss: 1.108571)
+2026-01-13 09:47:23,479 - INFO - Epoch  31/3000 | Train Loss: 0.568886 | Val Loss: 1.093397
+2026-01-13 09:47:23,481 - INFO -   → 保存最佳模型 (Val Loss: 1.093397)
+2026-01-13 09:47:23,485 - INFO - Epoch  32/3000 | Train Loss: 0.574138 | Val Loss: 1.080828
+2026-01-13 09:47:23,487 - INFO -   → 保存最佳模型 (Val Loss: 1.080828)
+2026-01-13 09:47:23,492 - INFO - Epoch  33/3000 | Train Loss: 0.557148 | Val Loss: 1.069811
+2026-01-13 09:47:23,496 - INFO -   → 保存最佳模型 (Val Loss: 1.069811)
+2026-01-13 09:47:23,501 - INFO - Epoch  34/3000 | Train Loss: 0.540098 | Val Loss: 1.060640
+2026-01-13 09:47:23,503 - INFO -   → 保存最佳模型 (Val Loss: 1.060640)
+2026-01-13 09:47:23,509 - INFO - Epoch  35/3000 | Train Loss: 0.513850 | Val Loss: 1.054135
+2026-01-13 09:47:23,510 - INFO -   → 保存最佳模型 (Val Loss: 1.054135)
+2026-01-13 09:47:23,516 - INFO - Epoch  36/3000 | Train Loss: 0.532384 | Val Loss: 1.049150
+2026-01-13 09:47:23,518 - INFO -   → 保存最佳模型 (Val Loss: 1.049150)
+2026-01-13 09:47:23,523 - INFO - Epoch  37/3000 | Train Loss: 0.517945 | Val Loss: 1.043078
+2026-01-13 09:47:23,525 - INFO -   → 保存最佳模型 (Val Loss: 1.043078)
+2026-01-13 09:47:23,530 - INFO - Epoch  38/3000 | Train Loss: 0.479238 | Val Loss: 1.037357
+2026-01-13 09:47:23,532 - INFO -   → 保存最佳模型 (Val Loss: 1.037357)
+2026-01-13 09:47:23,538 - INFO - Epoch  39/3000 | Train Loss: 0.467032 | Val Loss: 1.032711
+2026-01-13 09:47:23,539 - INFO -   → 保存最佳模型 (Val Loss: 1.032711)
+2026-01-13 09:47:23,545 - INFO - Epoch  40/3000 | Train Loss: 0.459218 | Val Loss: 1.029925
+2026-01-13 09:47:23,546 - INFO -   → 保存最佳模型 (Val Loss: 1.029925)
+2026-01-13 09:47:23,552 - INFO - Epoch  41/3000 | Train Loss: 0.436255 | Val Loss: 1.028516
+2026-01-13 09:47:23,554 - INFO -   → 保存最佳模型 (Val Loss: 1.028516)
+2026-01-13 09:47:23,559 - INFO - Epoch  42/3000 | Train Loss: 0.451654 | Val Loss: 1.027381
+2026-01-13 09:47:23,560 - INFO -   → 保存最佳模型 (Val Loss: 1.027381)
+2026-01-13 09:47:23,566 - INFO - Epoch  43/3000 | Train Loss: 0.436532 | Val Loss: 1.025882
+2026-01-13 09:47:23,567 - INFO -   → 保存最佳模型 (Val Loss: 1.025882)
+2026-01-13 09:47:23,573 - INFO - Epoch  44/3000 | Train Loss: 0.446298 | Val Loss: 1.024314
+2026-01-13 09:47:23,574 - INFO -   → 保存最佳模型 (Val Loss: 1.024314)
+2026-01-13 09:47:23,580 - INFO - Epoch  45/3000 | Train Loss: 0.422752 | Val Loss: 1.023506
+2026-01-13 09:47:23,582 - INFO -   → 保存最佳模型 (Val Loss: 1.023506)
+2026-01-13 09:47:23,588 - INFO - Epoch  46/3000 | Train Loss: 0.399783 | Val Loss: 1.023607
+2026-01-13 09:47:23,594 - INFO - Epoch  47/3000 | Train Loss: 0.382692 | Val Loss: 1.024316
+2026-01-13 09:47:23,599 - INFO - Epoch  48/3000 | Train Loss: 0.405953 | Val Loss: 1.025727
+2026-01-13 09:47:23,604 - INFO - Epoch  49/3000 | Train Loss: 0.423853 | Val Loss: 1.029255
+2026-01-13 09:47:23,610 - INFO - Epoch  50/3000 | Train Loss: 0.391897 | Val Loss: 1.033333
+2026-01-13 09:47:23,617 - INFO - Epoch  51/3000 | Train Loss: 0.371714 | Val Loss: 1.037132
+2026-01-13 09:47:23,622 - INFO - Epoch  52/3000 | Train Loss: 0.382801 | Val Loss: 1.040342
+2026-01-13 09:47:23,628 - INFO - Epoch  53/3000 | Train Loss: 0.399676 | Val Loss: 1.043553
+2026-01-13 09:47:23,634 - INFO - Epoch  54/3000 | Train Loss: 0.385939 | Val Loss: 1.047603
+2026-01-13 09:47:23,639 - INFO - Epoch  55/3000 | Train Loss: 0.363667 | Val Loss: 1.050496
+2026-01-13 09:47:23,644 - INFO - Epoch  56/3000 | Train Loss: 0.413739 | Val Loss: 1.052321
+2026-01-13 09:47:23,650 - INFO - Epoch  57/3000 | Train Loss: 0.334846 | Val Loss: 1.053995
+2026-01-13 09:47:23,655 - INFO - Epoch  58/3000 | Train Loss: 0.354373 | Val Loss: 1.055297
+2026-01-13 09:47:23,661 - INFO - Epoch  59/3000 | Train Loss: 0.383024 | Val Loss: 1.056529
+2026-01-13 09:47:23,667 - INFO - Epoch  60/3000 | Train Loss: 0.378185 | Val Loss: 1.057299
+2026-01-13 09:47:23,672 - INFO - Epoch  61/3000 | Train Loss: 0.353165 | Val Loss: 1.056820
+2026-01-13 09:47:23,677 - INFO - Epoch  62/3000 | Train Loss: 0.362369 | Val Loss: 1.058457
+2026-01-13 09:47:23,683 - INFO - Epoch  63/3000 | Train Loss: 0.361411 | Val Loss: 1.061495
+2026-01-13 09:47:23,689 - INFO - Epoch  64/3000 | Train Loss: 0.351926 | Val Loss: 1.063951
+2026-01-13 09:47:23,695 - INFO - Epoch  65/3000 | Train Loss: 0.335802 | Val Loss: 1.062907
+2026-01-13 09:47:23,700 - INFO - Epoch  66/3000 | Train Loss: 0.306487 | Val Loss: 1.061839
+2026-01-13 09:47:23,705 - INFO - Epoch  67/3000 | Train Loss: 0.356295 | Val Loss: 1.061516
+2026-01-13 09:47:23,711 - INFO - Epoch  68/3000 | Train Loss: 0.329993 | Val Loss: 1.062313
+2026-01-13 09:47:23,717 - INFO - Epoch  69/3000 | Train Loss: 0.344861 | Val Loss: 1.063585
+2026-01-13 09:47:23,723 - INFO - Epoch  70/3000 | Train Loss: 0.341862 | Val Loss: 1.064815
+2026-01-13 09:47:23,730 - INFO - Epoch  71/3000 | Train Loss: 0.345033 | Val Loss: 1.066892
+2026-01-13 09:47:23,737 - INFO - Epoch  72/3000 | Train Loss: 0.348278 | Val Loss: 1.069001
+2026-01-13 09:47:23,742 - INFO - Epoch  73/3000 | Train Loss: 0.338197 | Val Loss: 1.071563
+2026-01-13 09:47:23,748 - INFO - Epoch  74/3000 | Train Loss: 0.340237 | Val Loss: 1.074350
+2026-01-13 09:47:23,753 - INFO - Epoch  75/3000 | Train Loss: 0.330382 | Val Loss: 1.076180
+2026-01-13 09:47:23,759 - INFO - Epoch  76/3000 | Train Loss: 0.350406 | Val Loss: 1.076884
+2026-01-13 09:47:23,765 - INFO - Epoch  77/3000 | Train Loss: 0.324963 | Val Loss: 1.076470
+2026-01-13 09:47:23,770 - INFO - Epoch  78/3000 | Train Loss: 0.348922 | Val Loss: 1.076650
+2026-01-13 09:47:23,776 - INFO - Epoch  79/3000 | Train Loss: 0.337492 | Val Loss: 1.077186
+2026-01-13 09:47:23,781 - INFO - Epoch  80/3000 | Train Loss: 0.304885 | Val Loss: 1.077570
+2026-01-13 09:47:23,786 - INFO - Epoch  81/3000 | Train Loss: 0.310913 | Val Loss: 1.078652
+2026-01-13 09:47:23,791 - INFO - Epoch  82/3000 | Train Loss: 0.301678 | Val Loss: 1.081821
+2026-01-13 09:47:23,796 - INFO - Epoch  83/3000 | Train Loss: 0.306726 | Val Loss: 1.083073
+2026-01-13 09:47:23,803 - INFO - Epoch  84/3000 | Train Loss: 0.339964 | Val Loss: 1.083703
+2026-01-13 09:47:23,808 - INFO - Epoch  85/3000 | Train Loss: 0.331856 | Val Loss: 1.084385
+2026-01-13 09:47:23,813 - INFO - Epoch  86/3000 | Train Loss: 0.301189 | Val Loss: 1.086491
+2026-01-13 09:47:23,819 - INFO - Epoch  87/3000 | Train Loss: 0.323260 | Val Loss: 1.087852
+2026-01-13 09:47:23,825 - INFO - Epoch  88/3000 | Train Loss: 0.303093 | Val Loss: 1.088413
+2026-01-13 09:47:23,831 - INFO - Epoch  89/3000 | Train Loss: 0.324393 | Val Loss: 1.088713
+2026-01-13 09:47:23,836 - INFO - Epoch  90/3000 | Train Loss: 0.323581 | Val Loss: 1.089673
+2026-01-13 09:47:23,841 - INFO - Epoch  91/3000 | Train Loss: 0.314791 | Val Loss: 1.091457
+2026-01-13 09:47:23,847 - INFO - Epoch  92/3000 | Train Loss: 0.371886 | Val Loss: 1.092991
+2026-01-13 09:47:23,853 - INFO - Epoch  93/3000 | Train Loss: 0.316893 | Val Loss: 1.093543
+2026-01-13 09:47:23,858 - INFO - Epoch  94/3000 | Train Loss: 0.323964 | Val Loss: 1.093971
+2026-01-13 09:47:23,864 - INFO - Epoch  95/3000 | Train Loss: 0.312555 | Val Loss: 1.095153
+2026-01-13 09:47:23,869 - INFO - Epoch  96/3000 | Train Loss: 0.332495 | Val Loss: 1.096820
+2026-01-13 09:47:23,874 - INFO - Epoch  97/3000 | Train Loss: 0.305127 | Val Loss: 1.097305
+2026-01-13 09:47:23,882 - INFO - Epoch  98/3000 | Train Loss: 0.302691 | Val Loss: 1.097932
+2026-01-13 09:47:23,887 - INFO - Epoch  99/3000 | Train Loss: 0.331978 | Val Loss: 1.099421
+2026-01-13 09:47:23,892 - INFO - Epoch 100/3000 | Train Loss: 0.320952 | Val Loss: 1.098370
+2026-01-13 09:47:23,899 - INFO - Epoch 101/3000 | Train Loss: 0.335967 | Val Loss: 1.098570
+2026-01-13 09:47:23,904 - INFO - Epoch 102/3000 | Train Loss: 0.327691 | Val Loss: 1.100451
+2026-01-13 09:47:23,909 - INFO - Epoch 103/3000 | Train Loss: 0.299900 | Val Loss: 1.100215
+2026-01-13 09:47:23,915 - INFO - Epoch 104/3000 | Train Loss: 0.288562 | Val Loss: 1.100036
+2026-01-13 09:47:23,920 - INFO - Epoch 105/3000 | Train Loss: 0.283485 | Val Loss: 1.100194
+2026-01-13 09:47:23,926 - INFO - Epoch 106/3000 | Train Loss: 0.322149 | Val Loss: 1.100283
+2026-01-13 09:47:23,932 - INFO - Epoch 107/3000 | Train Loss: 0.287844 | Val Loss: 1.100250
+2026-01-13 09:47:23,937 - INFO - Epoch 108/3000 | Train Loss: 0.295680 | Val Loss: 1.102434
+2026-01-13 09:47:23,943 - INFO - Epoch 109/3000 | Train Loss: 0.329972 | Val Loss: 1.103132
+2026-01-13 09:47:23,950 - INFO - Epoch 110/3000 | Train Loss: 0.338651 | Val Loss: 1.103521
+2026-01-13 09:47:23,955 - INFO - Epoch 111/3000 | Train Loss: 0.308929 | Val Loss: 1.104371
+2026-01-13 09:47:23,960 - INFO - Epoch 112/3000 | Train Loss: 0.328143 | Val Loss: 1.106019
+2026-01-13 09:47:23,965 - INFO - Epoch 113/3000 | Train Loss: 0.306780 | Val Loss: 1.107806
+2026-01-13 09:47:23,971 - INFO - Epoch 114/3000 | Train Loss: 0.347534 | Val Loss: 1.109247
+2026-01-13 09:47:23,975 - INFO - Epoch 115/3000 | Train Loss: 0.284255 | Val Loss: 1.108043
+2026-01-13 09:47:23,981 - INFO - Epoch 116/3000 | Train Loss: 0.363219 | Val Loss: 1.108555
+2026-01-13 09:47:23,986 - INFO - Epoch 117/3000 | Train Loss: 0.331423 | Val Loss: 1.109497
+2026-01-13 09:47:23,992 - INFO - Epoch 118/3000 | Train Loss: 0.300496 | Val Loss: 1.110143
+2026-01-13 09:47:23,998 - INFO - Epoch 119/3000 | Train Loss: 0.307541 | Val Loss: 1.109918
+2026-01-13 09:47:24,003 - INFO - Epoch 120/3000 | Train Loss: 0.329278 | Val Loss: 1.110344
+2026-01-13 09:47:24,007 - INFO - Epoch 121/3000 | Train Loss: 0.309948 | Val Loss: 1.111527
+2026-01-13 09:47:24,013 - INFO - Epoch 122/3000 | Train Loss: 0.315136 | Val Loss: 1.113084
+2026-01-13 09:47:24,018 - INFO - Epoch 123/3000 | Train Loss: 0.329003 | Val Loss: 1.113359
+2026-01-13 09:47:24,023 - INFO - Epoch 124/3000 | Train Loss: 0.337245 | Val Loss: 1.111899
+2026-01-13 09:47:24,029 - INFO - Epoch 125/3000 | Train Loss: 0.336128 | Val Loss: 1.111729
+2026-01-13 09:47:24,034 - INFO - Epoch 126/3000 | Train Loss: 0.309233 | Val Loss: 1.112299
+2026-01-13 09:47:24,039 - INFO - Epoch 127/3000 | Train Loss: 0.303208 | Val Loss: 1.113699
+2026-01-13 09:47:24,045 - INFO - Epoch 128/3000 | Train Loss: 0.344313 | Val Loss: 1.115125
+2026-01-13 09:47:24,050 - INFO - Epoch 129/3000 | Train Loss: 0.292728 | Val Loss: 1.113078
+2026-01-13 09:47:24,055 - INFO - Epoch 130/3000 | Train Loss: 0.282983 | Val Loss: 1.112544
+2026-01-13 09:47:24,061 - INFO - Epoch 131/3000 | Train Loss: 0.314537 | Val Loss: 1.114910
+2026-01-13 09:47:24,066 - INFO - Epoch 132/3000 | Train Loss: 0.316426 | Val Loss: 1.116734
+2026-01-13 09:47:24,072 - INFO - Epoch 133/3000 | Train Loss: 0.328449 | Val Loss: 1.116943
+2026-01-13 09:47:24,077 - INFO - Epoch 134/3000 | Train Loss: 0.308474 | Val Loss: 1.115654
+2026-01-13 09:47:24,082 - INFO - Epoch 135/3000 | Train Loss: 0.337600 | Val Loss: 1.115439
+2026-01-13 09:47:24,089 - INFO - Epoch 136/3000 | Train Loss: 0.312680 | Val Loss: 1.113664
+2026-01-13 09:47:24,094 - INFO - Epoch 137/3000 | Train Loss: 0.295468 | Val Loss: 1.113944
+2026-01-13 09:47:24,099 - INFO - Epoch 138/3000 | Train Loss: 0.307048 | Val Loss: 1.114691
+2026-01-13 09:47:24,105 - INFO - Epoch 139/3000 | Train Loss: 0.304996 | Val Loss: 1.114834
+2026-01-13 09:47:24,111 - INFO - Epoch 140/3000 | Train Loss: 0.298881 | Val Loss: 1.112787
+2026-01-13 09:47:24,118 - INFO - Epoch 141/3000 | Train Loss: 0.307174 | Val Loss: 1.113330
+2026-01-13 09:47:24,124 - INFO - Epoch 142/3000 | Train Loss: 0.318648 | Val Loss: 1.113953
+2026-01-13 09:47:24,130 - INFO - Epoch 143/3000 | Train Loss: 0.304909 | Val Loss: 1.114651
+2026-01-13 09:47:24,136 - INFO - Epoch 144/3000 | Train Loss: 0.302296 | Val Loss: 1.114675
+2026-01-13 09:47:24,141 - INFO - Epoch 145/3000 | Train Loss: 0.286413 | Val Loss: 1.114984
+2026-01-13 09:47:24,141 - INFO - 
+  Early Stopping! 验证损失100轮未改善
+2026-01-13 09:47:24,141 - INFO -   最佳epoch: 45, 最佳Val Loss: 1.023506
+2026-01-13 09:47:24,141 - INFO - [5/5] 保存训练结果...
+2026-01-13 09:47:24,412 - INFO - 训练曲线已保存到 d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_12\training_curve.png
+2026-01-13 09:47:24,412 - INFO - 训练完成！
+2026-01-13 09:47:24,412 - INFO - 最佳验证损失: 1.023506
+2026-01-13 09:47:24,412 - INFO - 模型保存路径: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_12\morph_embedding_best.pt
+2026-01-13 09:47:24,412 - INFO - 训练曲线: d:\liubotao\other\BIT_TS\SD\code\SD\train_morph_embedding\layer_models\layer_12\training_curve.png
+2026-01-13 09:47:24,412 - INFO - ======================================================================

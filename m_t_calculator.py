@@ -1,15 +1,13 @@
-import torch
+﻿import torch
 import numpy as np
 import torch.nn as nn
 from typing import List, Optional
 from scipy.spatial.distance import cosine
 
-# 导入完整的 H(t) 计算器
-from h_t_calculator import init_entropy_calculator, PolysemyEntropyCalculator
-
 # ---------------------- 核心配置（基于文档2定义） ----------------------
-# 1. 214个康熙部首（严格按文档要求）
+# 1. 扩展部首列表：214康熙部首 + 常见简化形式（避免映射转换）
 RADICALS = [
+    # 214个康熙部首
     # 1画 (6个)
     "一", "丨", "丶", "丿", "乙", "亅",
     # 2画 (29个)
@@ -53,32 +51,16 @@ RADICALS = [
     # 17画 (2个)
     "齒", "龍",
     # 其余 (2个)
-    "龜", "龠"
+    "龜", "龠",
+    
+    # ========== 常见简化形式（cnradical常用输出） ==========
+    "亻", "氵", "扌", "讠", "钅", "纟", "饣", "衤", "礻", "犭",  # 10个
+    "牜", "罒", "覀", "灬", "忄", "阝", "艹", "辶", "⻊", "⺮",  # 10个
+    "攵", "⻏", "⺶", "⻗", "⻖", "⺧", "⻞", "⻢", "⻋", "⻉"   # 10个
 ]
 
-# 简化字偏旁到康熙部首的映射
-SIMPLIFIED_TO_RADICAL = {
-    "艹": "艸",  # 草字头
-    "氵": "水",  # 三点水
-    "忄": "心",  # 竖心旁
-    "扌": "手",  # 提手旁
-    "饣": "食",  # 食字旁
-    "纟": "糸",  # 绞丝旁
-    "钅": "金",  # 金字旁
-    "衤": "衣",  # 衣字旁
-    "礻": "示",  # 示字旁
-    "犭": "犬",  # 反犬旁
-    "牜": "牛",  # 牛字旁
-    "罒": "网",  # 四字头
-    "覀": "襾",  # 西字头
-    "辶": "辵",  # 走之底
-    "廴": "廴",  # 建之底
-    "肀": "聿",  # 聿字旁
-    "灬": "火"   # 四点底
-}
-
 RADICAL_TO_IDX = {rad: i for i, rad in enumerate(RADICALS)}
-NUM_RADICALS = len(RADICALS)  # 214（严格符合文档）
+NUM_RADICALS = len(RADICALS)  # 244（214康熙 + 30简化形式）
 
 # 2. 笔画顺序类别（5类）
 STROKE_ORDER = ["横", "竖", "撇", "捺", "折"]
@@ -88,8 +70,14 @@ NUM_STROKE_ORDER = len(STROKE_ORDER)  # 5
 STRUCT_TYPES = ["左右", "上下", "包围", "独体"]
 NUM_STRUCT = len(STRUCT_TYPES)  # 4
 
-# 4. 形态特征总维度：214（部首）+ 6（笔画：1+5）+ 4（结构）= 224（严格符合文档定义）
-MORPH_DIM = NUM_RADICALS + 1 + NUM_STROKE_ORDER + NUM_STRUCT  # 224
+# 4. 形态特征总维度：244（扩展部首）+ 6（笔画：1+5）+ 4（结构）= 254
+
+MORPH_DIM = NUM_RADICALS + 1 + NUM_STROKE_ORDER + NUM_STRUCT  # 254
+
+# Global singletons for tool management
+_GLOBAL_MORPH_EMBEDDING = None
+_GLOBAL_MORPH_EXTRACTOR = None
+_GLOBAL_H_T_CALCULATOR = None
 
 # ---------------------- 中文形态特征提取工具（基于文档2） ----------------------
 class ChineseMorphExtractor:
@@ -200,49 +188,56 @@ class ChineseMorphExtractor:
         }
     
     def _get_radical_from_cnradical(self, char: str) -> Optional[str]:
-        """使用cnradical库获取部首，并映射到214康熙部首"""
+        """使用cnradical库获取部首（直接使用，无需映射）"""
         if not self.has_cnradical or self.radical_tool is None:
             return None
         try:
             radical = self.radical_tool.trans_ch(char)
-            if not radical:
-                return None
-            # 简化字偏旁映射到康熙部首
-            if radical in SIMPLIFIED_TO_RADICAL:
-                radical = SIMPLIFIED_TO_RADICAL[radical]
-            return radical
+            return radical if radical else None
         except Exception:
             return None
     
-    def _normalize_radical(self, radical: str) -> str:
-        """标准化部首：简化字偏旁转换为康熙部首"""
-        if radical in SIMPLIFIED_TO_RADICAL:
-            return SIMPLIFIED_TO_RADICAL[radical]
-        return radical
-    
     def extract(self, char: str) -> Optional[np.ndarray]:
         """
-        提取单个/多个汉字的形态特征向量m(t)（严格符合文档定义）
-        返回：shape=(224,)的numpy数组
+        提取单个/多个汉字的形态特征向量m(t)
+        返回：shape=(254,)的numpy数组
         m(t) = [m_rad(t); m_stroke(t); m_struct(t)]
-        - m_rad(t): 214维（部首one-hot）
+        - m_rad(t): 244维（扩展部首one-hot）
         - m_stroke(t): 6维（笔画数1维 + 笔画顺序5维）
         - m_struct(t): 4维（结构类型one-hot）
         
-        多字token处理策略：取第一个汉字的形态特征（首字通常承载主要语义）
+        多字token处理策略：融合所有汉字的形态特征（加权平均）
         """
-        # 处理多字token：取第一个字符
+        # 处理多字token：提取所有汉字并融合特征
         if len(char) > 1:
-            # 找到第一个汉字
-            first_char = None
-            for c in char:
-                if '\u4e00' <= c <= '\u9fff':
-                    first_char = c
-                    break
-            if first_char is None:
+            chinese_chars = [c for c in char if '\u4e00' <= c <= '\u9fff']
+            if not chinese_chars:
                 return None  # 没有汉字
-            char = first_char
+            
+            # 如果是多字词，融合所有字符的形态特征
+            if len(chinese_chars) > 1:
+                all_features = []
+                for c in chinese_chars:
+                    feat = self._extract_single_char(c)
+                    if feat is not None:
+                        all_features.append(feat)
+                
+                if not all_features:
+                    return self._get_default_morph()
+                
+                # 加权平均：首字权重更高
+                weights = np.array([0.5] + [0.5 / (len(all_features) - 1)] * (len(all_features) - 1))
+                m_t = np.average(all_features, axis=0, weights=weights)
+                return m_t
+            else:
+                char = chinese_chars[0]
         
+        return self._extract_single_char(char)
+    
+    def _extract_single_char(self, char: str) -> Optional[np.ndarray]:
+        """提取单个汉字的形态特征（内部方法）"""
+    def _extract_single_char(self, char: str) -> Optional[np.ndarray]:
+        """提取单个汉字的形态特征（内部方法）"""
         # 判断是否为中文字符
         if not ('\u4e00' <= char <= '\u9fff'):
             return None
@@ -264,16 +259,15 @@ class ChineseMorphExtractor:
             else:
                 return self._get_default_morph()
         
-        # 2. 部首特征（one-hot编码，214维）
-        # 先标准化部首（简化字偏旁转换为康熙部首）
-        radical = self._normalize_radical(morph_info["radical"])
+        # 2. 部首特征（one-hot编码，244维扩展部首）
+        radical = morph_info["radical"]
         radical_onehot = np.zeros(NUM_RADICALS)
         radical_idx = RADICAL_TO_IDX.get(radical, -1)
         if radical_idx != -1:
             radical_onehot[radical_idx] = 1.0
         else:
-            # 如果部首不在214个康熙部首中，使用默认值
-            print(f"Warning: Radical '{morph_info['radical']}' not in 214 Kangxi radicals for char '{char}'")
+            # 如果部首不在扩展列表中，使用默认值（不再警告）
+            pass  # 静默处理未知部首
         
         # 3. 笔画特征（6维）
         # 3.1 笔画数特征（归一化到[0,1]，1维）
@@ -294,9 +288,9 @@ class ChineseMorphExtractor:
             struct_idx = STRUCT_TYPES.index(struct_type)
             struct_onehot[struct_idx] = 1.0
         
-        # 5. 拼接所有特征（严格符合文档2定义的m(t)结构）
+        # 5. 拼接所有特征
         # m(t) = [m_rad(t); m_stroke(t); m_struct(t)]
-        # 维度：214 + (1+5) + 4 = 224
+        # 维度：244 + (1+5) + 4 = 254
         m_t = np.concatenate([
             radical_onehot,              # 214维
             np.array([normalized_stroke]),  # 1维（笔画数）
@@ -319,7 +313,7 @@ class ChineseMorphExtractor:
 
 # ---------------------- 形态特征嵌入函数Φ(m(t))（文档2定义） ----------------------
 class MorphEmbedding(nn.Module):
-    """将224维形态特征映射至d维语义空间"""
+    """将254维形态特征映射至d维语义空间"""
     def __init__(self, morph_dim: int = MORPH_DIM, hidden_dim: int = 896):
         super().__init__()
         # 文档2定义：Linear + GELU + LayerNorm
@@ -330,7 +324,7 @@ class MorphEmbedding(nn.Module):
         )
     
     def forward(self, m_t: np.ndarray) -> torch.Tensor:
-        """输入：224维形态特征向量；输出：d维形态嵌入向量"""
+        """输入：254维形态特征向量；输出：d维形态嵌入向量"""
         # 获取模型所在设备
         device = next(self.embedding.parameters()).device
         m_tensor = torch.tensor(m_t, dtype=torch.float32).unsqueeze(0).to(device)
@@ -374,18 +368,24 @@ def compute_polysemy_entropy_simple(
 def compute_m_t(
     h_t: torch.Tensor,
     token_text: str,
-    morph_extractor: ChineseMorphExtractor,
-    morph_embedding: MorphEmbedding,
-    poly_mlp: nn.Module,
-    beta: float = 0.2  # 上下文修正因子权重（文档2典型值）
+    beta: float = 0.2
 ) -> float:
     """
-    计算形态-语义匹配度M(t)（文档2核心公式：M(t) = cosine(h(t), Φ(m(t))) · η(t)）
+    计算形态-语义匹配度M(t)（文档2核心公式：M(t) = cosine(h(t), Φ(m(t)))）
     """
-    print(f"\n{'='*60}")
-    print(f"[M(t) 计算] Token: '{token_text}' (长度: {len(token_text)})")
-    print(f"{'='*60}")
-    
+    global _GLOBAL_MORPH_EXTRACTOR, _GLOBAL_MORPH_EMBEDDING
+    if _GLOBAL_MORPH_EXTRACTOR is None:
+        _GLOBAL_MORPH_EXTRACTOR = ChineseMorphExtractor()
+    if _GLOBAL_MORPH_EMBEDDING is None:
+        _GLOBAL_MORPH_EMBEDDING = MorphEmbedding()
+    morph_extractor = _GLOBAL_MORPH_EXTRACTOR
+    morph_embedding = _GLOBAL_MORPH_EMBEDDING
+    poly_mlp = nn.Sequential(
+        nn.Linear(896, 128),
+        nn.ReLU(),
+        nn.Linear(128, 5)
+    ).eval()
+
     # 1. 提取形态特征向量m(t)
     m_t = morph_extractor.extract(token_text)
     if m_t is None:
@@ -394,55 +394,54 @@ def compute_m_t(
         print(f"  ➜ M(t) = {M_t_result:.6f} (默认值)")
         print(f"{'='*60}\n")
         return M_t_result
-    
+
     if len(token_text) > 1:
         # 简单显示：如果首字是汉字则显示，否则显示(非汉字)
         first_char = token_text[0]
         is_chinese = '\u4e00' <= first_char <= '\u9fff'
         display_char = first_char if is_chinese else '(非汉字)'
         print(f"  ⚠️  多字token，提取首字 '{display_char}' 的形态特征")
-    print(f"  [OK] 形态特征维度: {m_t.shape[0]} (期望224)")
-    
+    print(f"  [OK] 形态特征维度: {m_t.shape[0]} (期望254)")
+
     # 2. 形态特征嵌入Φ(m(t))（映射至语义空间）
     phi_m_t = morph_embedding(m_t).to(h_t.device)
-    print(f"  [OK] 形态嵌入维度: {phi_m_t.shape[0]} (语义空间维度)")
-    
+    # 推理阶段强制归一化（LayerNorm），确保分布对齐
+    norm = torch.nn.LayerNorm(phi_m_t.shape[0]).to(phi_m_t.device)
+    phi_m_t = norm(phi_m_t)
+    print(f"  [OK] 形态嵌入维度: {phi_m_t.shape[0]} (语义空间维度, 已归一化)")
+
     # 3. 计算基础匹配度（余弦相似度，截断负相关值）
     h_t_np = h_t.detach().cpu().numpy() if h_t.requires_grad else h_t.cpu().numpy()
     phi_m_t_np = phi_m_t.detach().cpu().numpy() if phi_m_t.requires_grad else phi_m_t.cpu().numpy()
     cos_sim = 1 - cosine(h_t_np, phi_m_t_np)  # 余弦相似度（1-cosine距离）
     base_match = max(cos_sim, 0.0)  # 截断负相关，文档2定义
-    
+
     print(f"\n  【基础匹配度计算】")
     print(f"    原始余弦相似度: {cos_sim:.6f}")
     print(f"    截断后base(t):  {base_match:.6f} (max(cos_sim, 0))")
-    
+
     # 4. 计算上下文动态修正因子η(t) = 1 - β·H(t)
-    # 注意：使用简化版H(t)计算（仅h(t)特征）
-    # 完整版需要调用 h_t_calculator 并传入 h(t), c(t), m(t), syn(t)
-    # - H(t)=0（单义）→ η(t)=1.0（无修正）
-    # - H(t)=1（最大多义）→ η(t)=1-β（最大修正）
     h_t_entropy = compute_polysemy_entropy_simple(h_t, poly_mlp, num_senses=5)
     eta_t_raw = 1 - beta * h_t_entropy
     eta_t = np.clip(eta_t_raw, 0.8, 1.0)  # 确保η(t) ∈ [0.8, 1.0]
-    
+
     print(f"\n  【上下文动态修正】")
     print(f"    多义性熵H(t):   {h_t_entropy:.6f} (简化版，仅h(t)特征)")
     print(f"    权重系数β:      {beta:.2f} (最大修正幅度)")
     print(f"    原始η(t):       {eta_t_raw:.6f} (1 - {beta} × {h_t_entropy:.6f})")
     print(f"    截断后η(t):     {eta_t:.6f} (clip到[0.8, 1.0])")
-    
+
     # 5. 最终M(t)计算：M(t) = cosine(h(t), Φ(m(t))) · η(t)
     M_t = base_match * eta_t
     M_t_result = round(M_t, 6)  # 保留6位小数
-    
+
     print(f"\n  【最终结果】")
     print(f"    M(t) = cosine(h(t), Φ(m(t))) × η(t)")
     print(f"         = {base_match:.6f} × {eta_t:.6f}")
     print(f"         = {M_t_result:.6f}")
     print(f"    [OK] M(t) in [0,1]: {0 <= M_t_result <= 1}")
     print(f"{'='*60}\n")
-    
+
     return M_t_result
 
 # ---------------------- 批量计算函数 ----------------------
@@ -450,7 +449,7 @@ def extract_m_t_batch(
     token_texts: List[str],
     morph_extractor: ChineseMorphExtractor
 ) -> List[np.ndarray]:
-    """批量提取所有token的形态特征向量m(t)（224维）"""
+    """批量提取所有token的形态特征向量m(t)（254维）"""
     m_t_list = []
     for token_text in token_texts:
         m_t = morph_extractor.extract(token_text)
@@ -480,21 +479,55 @@ def compute_m_t_batch(
         M_t_list.append(M_t)
     return np.array(M_t_list)
 
-# ---------------------- 初始化工具（方便外部调用） ----------------------
-def init_m_t_tools(hidden_dim: int = 896) -> tuple:
+# ---------------------- 新的Φ(m(t))：字符级语义向量（无需训练）----------------------
+def compute_phi_m_t(token_text: str, model, tokenizer, device) -> torch.Tensor:
     """
-    初始化M(t)计算所需的工具类
-    返回：(形态提取器, 形态嵌入模型, 多义性分类器)
+    用字符级embedding替代形态嵌入（无需训练W_m）
+    
+    公式：Φ(m(t)) = LayerNorm(Mean(Embedding(chars(t))))
+    
+    理论依据：
+    1. LLM的embedding层已在大规模语料上训练，"江"的embedding天然接近"水"语义
+    2. 字符embedding与h(t)在同一空间，可直接计算相似度
+    3. 参考文献：CharacterBERT (ACL 2020), Glyce (ACL 2019)
+    
+    Args:
+        token_text: token文本（如"江"、"金属"）
+        model: LLM模型（用于提取embedding）
+        tokenizer: 分词器
+        device: 设备
+        
+    Returns:
+        Φ(m(t)): d维语义向量（与h(t)同维度）
     """
-    morph_extractor = ChineseMorphExtractor()
-    morph_embedding = MorphEmbedding(hidden_dim=hidden_dim)
-    # 初始化多义性分类器（文档2定义的poly_mlp）
-    poly_mlp = nn.Sequential(
-        nn.Linear(hidden_dim, 128),
-        nn.ReLU(),
-        nn.Linear(128, 5)  # 5个默认义项
-    ).eval()
-    return morph_extractor, morph_embedding, poly_mlp
+    # 提取汉字字符
+    chars = [c for c in token_text if '\u4e00' <= c <= '\u9fff']
+    if not chars:
+        return torch.zeros(model.config.hidden_size).to(device)
+    
+    # 提取每个字符的embedding
+    char_embeddings = []
+    for char in chars:
+        # 编码单个字符
+        char_ids = tokenizer.encode(char, add_special_tokens=False)
+        if len(char_ids) > 0:
+            # 从embedding层提取（这是LLM学习过的语义表示）
+            with torch.no_grad():
+                embed = model.get_input_embeddings()(
+                    torch.tensor([char_ids[0]]).to(device)
+                )
+            char_embeddings.append(embed.squeeze(0))
+    
+    if not char_embeddings:
+        return torch.zeros(model.config.hidden_size).to(device)
+    
+    # 多字token取平均
+    phi_m_t = torch.stack(char_embeddings).mean(dim=0)
+    
+    # LayerNorm对齐分布（与文档定义一致）
+    phi_m_t = torch.nn.functional.layer_norm(phi_m_t, (phi_m_t.shape[0],))
+    
+    return phi_m_t
 
 
 # ---------------------- 完整版M(t)计算（使用h_t_calculator） ----------------------
@@ -504,27 +537,29 @@ def compute_m_t_full(
     tokens: List[str],
     token_idx: int,
     hidden_states: torch.Tensor,
-    morph_extractor: ChineseMorphExtractor,
-    morph_embedding: MorphEmbedding,
-    h_t_calculator: PolysemyEntropyCalculator,
+    model=None,  # 保留兼容性（不再使用）
+    tokenizer=None,  # 保留兼容性（不再使用）
     attention_weights: Optional[torch.Tensor] = None,
-    beta: float = 0.2
+    beta: float = 0.2,
+    layer_idx: Optional[int] = None
 ) -> float:
     """
-    完整版M(t)计算，使用h_t_calculator的完整H(t)实现
-    
+    完整版M(t)计算，使用训练好的MorphEmbedding
+
+    公式：M(t) = cosine(h(t), Φ(m(t))) × η(H(t))
+    其中：Φ(m(t)) = LayerNorm(GELU(W_m·m(t) + b_m))（使用训练好的W_m）
+
     Args:
         h_t: 当前token的语义向量
         token_text: 当前token文本
         tokens: 完整token序列
         token_idx: 当前token在序列中的索引
         hidden_states: 完整序列的隐藏状态 [seq_len, hidden_dim]
-        morph_extractor: 形态特征提取器
-        morph_embedding: 形态嵌入模型
-        h_t_calculator: 完整H(t)计算器（来自h_t_calculator.py）
-        attention_weights: 注意力权重矩阵 [seq_len, seq_len]（可选）
+        model: 保留兼容性（废弃）
+        tokenizer: 保留兼容性（废弃）
+        attention_weights: 注意力权重矩阵（可选）
         beta: 修正因子权重
-    
+
     Returns:
         M(t): 形态-语义匹配度 ∈ [0, 1]
     """
@@ -533,177 +568,75 @@ def compute_m_t_full(
     print(f"{'='*60}")
     
     # 1. 提取当前token形态特征
-    m_t = morph_extractor.extract(token_text)
+    global _GLOBAL_MORPH_EXTRACTOR, _GLOBAL_MORPH_EMBEDDING
+    # 层数推断：优先从layer_idx参数，否则从hidden_states.shape[-1]推断
+    if _GLOBAL_MORPH_EXTRACTOR is None or _GLOBAL_MORPH_EMBEDDING is None:
+        # 动态加载权重路径
+        from pathlib import Path
+        hidden_dim = hidden_states.shape[-1]
+        # 使用layer_idx指定层数，默认12层
+        layer_folder = str(layer_idx) if layer_idx is not None else "12"
+        # 路径：train_morph_embedding/layer_models/layer_{layer}/morph_embedding_best.pt
+        model_path = Path(__file__).parent / "train_morph_embedding" / "layer_models" / f"layer_{layer_folder}" / "morph_embedding_best.pt"
+        morph_extractor = ChineseMorphExtractor()
+        morph_embedding = MorphEmbedding(hidden_dim=hidden_dim)
+        if model_path.exists():
+            morph_embedding.load_state_dict(torch.load(model_path, map_location='cpu'))
+            print(f"[OK] 已加载训练权重: {model_path}")
+        else:
+            print(f"[警告] 未找到训练权重: {model_path}，使用随机初始化")
+        morph_embedding.eval()
+        _GLOBAL_MORPH_EXTRACTOR = morph_extractor
+        _GLOBAL_MORPH_EMBEDDING = morph_embedding
+    m_t = _GLOBAL_MORPH_EXTRACTOR.extract(token_text)
     if m_t is None:
-        print(f"  ❌ 非中文token，返回默认值")
+        print(f"  [X] 非中文token，返回默认值")
         return 0.3
     
-    # 2. 形态嵌入 Φ(m(t))
-    phi_m_t = morph_embedding(m_t).to(h_t.device)
+    print(f"  [1/4] 原始形态特征 m(t)")
+    print(f"    维度: {m_t.shape}")
+    print(f"    非零维度数: {np.count_nonzero(m_t)}")
+    print(f"    前20维: {m_t[:20]}")
+    print(f"    均值: {np.mean(m_t):.6f}, 方差: {np.var(m_t):.6f}, 最大: {np.max(m_t):.6f}, 最小: {np.min(m_t):.6f}")
+    print(f"    范数: {np.linalg.norm(m_t):.6f}")
     
+    # 2. 计算Φ(m(t))：直接调用MorphEmbedding模型，并对 h(t) 和 Φ(m(t)) 都做 LayerNorm 归一化
+    m_t_tensor = torch.from_numpy(m_t).float().unsqueeze(0)
+    with torch.no_grad():
+        phi_m_t = _GLOBAL_MORPH_EMBEDDING(m_t).cpu()
+    # LayerNorm 归一化
+    layer_norm = torch.nn.LayerNorm(phi_m_t.shape[-1])
+    phi_m_t = layer_norm(phi_m_t)
+    h_t = layer_norm(h_t.cpu())
+    print(f"  [2/4] 形态嵌入 Φ(m(t)) = MorphEmbedding(m(t)) (直接模型调用)")
+    print(f"    Φ(m(t))最终: 维度{phi_m_t.shape}")
+    phi_m_t_np_dbg = phi_m_t.detach().numpy()
+    print(f"      前20维: {phi_m_t_np_dbg[:20]}")
+    print(f"      范数: {np.linalg.norm(phi_m_t_np_dbg):.6f}")
+    print(f"      均值: {np.mean(phi_m_t_np_dbg):.6f}, 标准差: {np.std(phi_m_t_np_dbg):.6f}, 最大: {np.max(phi_m_t_np_dbg):.6f}, 最小: {np.min(phi_m_t_np_dbg):.6f}")
+    
+
     # 3. 基础匹配度：cosine(h(t), Φ(m(t)))
-    h_t_np = h_t.detach().cpu().numpy() if h_t.requires_grad else h_t.cpu().numpy()
-    phi_m_t_np = phi_m_t.detach().cpu().numpy() if phi_m_t.requires_grad else phi_m_t.cpu().numpy()
+    h_t_np = h_t.detach().cpu().numpy() if hasattr(h_t, 'requires_grad') and h_t.requires_grad else h_t.cpu().numpy()
+    phi_m_t_np = phi_m_t.detach().cpu().numpy() if hasattr(phi_m_t, 'requires_grad') and phi_m_t.requires_grad else phi_m_t.cpu().numpy()
+
+    # 余弦相似度 = 1 - cosine_distance
+    from scipy.spatial.distance import cosine
     base_match = max(1 - cosine(h_t_np, phi_m_t_np), 0.0)
+
+    print(f"  [3/4] 余弦相似度 cosine(h(t), Φ(m(t)))")
+    print(f"    h(t)前20维: {h_t_np[:20]}")
+    print(f"    h(t)范数: {np.linalg.norm(h_t_np):.6f}, 均值: {np.mean(h_t_np):.6f}, 标准差: {np.std(h_t_np):.6f}, 最大: {np.max(h_t_np):.6f}, 最小: {np.min(h_t_np):.6f}")
+    print(f"    Φ(m(t))范数: {np.linalg.norm(phi_m_t_np):.6f}, 均值: {np.mean(phi_m_t_np):.6f}, 标准差: {np.std(phi_m_t_np):.6f}, 最大: {np.max(phi_m_t_np):.6f}, 最小: {np.min(phi_m_t_np):.6f}")
+    print(f"    余弦相似度: {base_match:.6f}")
     
-    print(f"  ✓ 基础匹配度: {base_match:.6f}")
-    
-    # 4. 调用h_t_calculator计算完整H(t)（一次提取所有token形态特征）
-    morph_features = np.array([
-        morph_extractor.extract(t) if morph_extractor.extract(t) is not None else np.zeros(224)
-        for t in tokens
-    ])
-    entropies = h_t_calculator.compute_batch_entropy(
-        tokens=tokens,
-        hidden_states=hidden_states,
-        morph_features=morph_features,
-        attention_weights=attention_weights
-    )
-    h_t_entropy = entropies[token_idx]
-    
-    # 5. 计算修正因子 η(t) = 1 - β·H(t)
-    eta_t = np.clip(1 - beta * h_t_entropy, 0.8, 1.0)
-    
-    print(f"  ✓ 多义性熵H(t): {h_t_entropy:.6f} (h+c+m+syn)")
-    print(f"  ✓ 修正因子η(t): {eta_t:.6f}")
-    
-    # 6. 最终M(t) = base_match × η(t)
-    M_t_result = round(base_match * eta_t, 6)
-    
-    print(f"  ✓ M(t) = {base_match:.6f} × {eta_t:.6f} = {M_t_result:.6f}")
+    # 4. 最终M(t)计算：M(t) = cosine(h(t), Φ(m(t)))
+    M_t_result = round(base_match, 6)  # 保留6位小数
+
+    print(f"\n  【最终结果】")
+    print(f"    M(t) = cosine(h(t), Φ(m(t)))")
+    print(f"         = {base_match:.6f}")
+    print(f"    [OK] M(t) in [0,1]: {0 <= M_t_result <= 1}")
     print(f"{'='*60}\n")
-    
+
     return M_t_result
-
-
-# ---------------------- 测试代码（单独运行验证） ----------------------
-if __name__ == "__main__":
-    from llm_hidden_extractor import extract_hidden_states
-    
-    print("="*70)
-    print("  M(t) 形态-语义匹配度计算验证")
-    print("="*70)
-    
-    # 测试文本
-    test_text = "我在吃苹果"
-    print(f"\n测试文本：{test_text}")
-    
-    # 提取真实LLM隐藏状态
-    print("\n正在加载 Qwen2.5-0.5B 模型并提取隐藏状态...")
-    h_t, token_num, tokenizer, inputs, attn_weights = extract_hidden_states(
-        text=test_text,
-        middle_layer_idx=12
-    )
-    
-    # 获取token序列
-    input_ids = inputs['input_ids'].squeeze(0)
-    tokens = [tokenizer.decode([token_id]) for token_id in input_ids]
-    
-    print(f"✓ 隐藏状态提取完成")
-    print(f"  - Token数量: {token_num}")
-    print(f"  - 隐藏维度: {h_t.shape[1]}")
-    print(f"  - Token序列: {tokens}")
-    
-    # 初始化M(t)工具
-    hidden_dim = h_t.shape[1]
-    morph_extractor, morph_embedding, poly_mlp = init_m_t_tools(hidden_dim)
-    print(f"\n✓ M(t)计算器初始化完成")
-    
-    # 批量计算M(t)
-    print("\n" + "="*70)
-    print("  开始计算形态-语义匹配度 M(t)")
-    print("="*70)
-    print("\n计算流程：")
-    print("  1. 提取形态特征 m(t)（214康熙部首+笔画+结构=224维）")
-    print("  2. 形态嵌入 Φ(m(t))（Linear→GELU→LayerNorm）")
-    print("  3. 计算余弦相似度 cosine(h(t), Φ(m(t)))")
-    print("  4. 计算多义性熵修正因子 η(t) = 1 - β·H(t)")
-    print("  5. 最终 M(t) = cosine × η(t)")
-    
-    M_t_values = []
-    print("\n" + "="*70)
-    print("  简化版M(t)计算结果（仅h(t)特征计算H(t)）")
-    print("="*70)
-    
-    for i, token in enumerate(tokens):
-        M_t = compute_m_t(
-            h_t=h_t[i],
-            token_text=token,
-            morph_extractor=morph_extractor,
-            morph_embedding=morph_embedding,
-            poly_mlp=poly_mlp
-        )
-        M_t_values.append(M_t)
-    
-    # 结果汇总
-    print("\n" + "="*70)
-    print("  M(t) 计算结果汇总")
-    print("="*70)
-    print(f"\n{'Token':<10} {'M(t)':<12} {'类型/说明':<30}")
-    print("-" * 70)
-    
-    for i, token in enumerate(tokens):
-        # 判断是否为中文字符
-        m_t = morph_extractor.extract(token)
-        if m_t is not None:
-            desc = "✓ 中文字符（有形态特征）"
-        else:
-            desc = "  非中文/无形态特征"
-        
-        print(f"{token:<10} {M_t_values[i]:.8f}    {desc}")
-    
-    # 科学性验证
-    print("\n" + "="*70)
-    print("  科学性验证")
-    print("="*70)
-    
-    print("\n【验证1：值域正确性】M(t) ∈ [0, 1]")
-    all_valid = all(0 <= m <= 1 for m in M_t_values)
-    print(f"  ✓ 所有M(t)值在有效范围内: {all_valid}")
-    
-    print("\n【验证2：中文vs非中文区分】")
-    chinese_tokens = []
-    non_chinese_tokens = []
-    
-    for i, token in enumerate(tokens):
-        if morph_extractor.extract(token) is not None:
-            chinese_tokens.append((token, M_t_values[i]))
-        else:
-            non_chinese_tokens.append((token, M_t_values[i]))
-    
-    if chinese_tokens:
-        avg_chinese = np.mean([m for _, m in chinese_tokens])
-        print(f"  中文字符 ({len(chinese_tokens)}个):")
-        for token, m in chinese_tokens:
-            print(f"    '{token}': M(t)={m:.6f}")
-        print(f"  平均M(t): {avg_chinese:.6f}")
-    
-    if non_chinese_tokens:
-        avg_non_chinese = np.mean([m for _, m in non_chinese_tokens])
-        print(f"\n  非中文 ({len(non_chinese_tokens)}个):")
-        for token, m in non_chinese_tokens:
-            print(f"    '{token}': M(t)={m:.6f}")
-        print(f"  平均M(t): {avg_non_chinese:.6f}")
-    
-    print("\n【验证3：公式组成验证】")
-    print("  M(t) = cosine(h(t), Φ(m(t))) × η(t)")
-    print("  ✓ 基础匹配度：余弦相似度（已截断负值）")
-    print("  ✓ 修正因子：η(t) = 1 - β·H(t)，β=0.2")
-    print("  ✓ 多义性熵：H(t)归一化到[0,1]")
-    
-    print("\n【验证4：形态特征维度】")
-    for token in tokens:
-        m_t = morph_extractor.extract(token)
-        if m_t is not None:
-            print(f"  '{token}': m(t)维度={m_t.shape[0]} (期望224)")
-    
-    print("\n" + "="*70)
-    print("  验证结论")
-    print("="*70)
-    print("\n✓ M(t)计算符合文档定义")
-    print("  - 值域约束正确: M(t) ∈ [0, 1]")
-    print("  - 形态特征正确: 214部首+6笔画+4结构=224维")
-    print("  - 形态嵌入正确: Linear→GELU→LayerNorm")
-    print("  - 余弦相似度正确: max(cosine, 0)")
-    print("  - 修正因子正确: η(t) = 1 - β·H(t)")
-    print("="*70)

@@ -16,6 +16,12 @@ import torch.nn.functional as F
 import numpy as np
 from typing import List, Tuple, Optional
 
+# 导入依赖模块
+from m_t_calculator import compute_m_t_full, ChineseMorphExtractor, MorphEmbedding
+from c_t_calculator import compute_c_t
+from d_t_calculator import compute_d_t
+from h_t_calculator import init_entropy_calculator
+
 
 class GlobalSemanticAnchor:
     """全局语义锚点计算器
@@ -97,7 +103,12 @@ class SemanticDriftCalculator:
                  omega: float = 0.4,
                  nu: float = 0.3,
                  mu: float = 0.25,
-                 epsilon: float = 1e-6):
+                 epsilon: float = 1e-6,
+                 morph_extractor: Optional[ChineseMorphExtractor] = None,
+                 morph_embedding: Optional[MorphEmbedding] = None,
+                 h_t_calculator: Optional[object] = None,
+                 model=None,  # 新增：LLM模型（用于Φ(m(t))）
+                 tokenizer=None):  # 新增：分词器（用于Φ(m(t))）
         """
         Args:
             decay_lambda: 时间衰减系数 λ
@@ -105,6 +116,11 @@ class SemanticDriftCalculator:
             nu: 平均距离权重 ν
             mu: 形态修正系数 μ
             epsilon: 正则化项
+            morph_extractor: 中文形态特征提取器（用于M(t)计算）
+            morph_embedding: 形态嵌入模型（保留参数兼容性）
+            h_t_calculator: 多义熵计算器（用于M(t)计算）
+            model: LLM模型（用于提取字符embedding）
+            tokenizer: 分词器（用于编码字符）
         """
         self.decay_lambda = decay_lambda
         self.omega = omega
@@ -114,6 +130,15 @@ class SemanticDriftCalculator:
         
         # 初始化全局锚点计算器
         self.anchor_calculator = GlobalSemanticAnchor(decay_lambda=decay_lambda)
+        
+        # 初始化M(t)计算所需组件
+        self.morph_extractor = morph_extractor if morph_extractor else ChineseMorphExtractor()
+        self.morph_embedding = morph_embedding if morph_embedding else MorphEmbedding(morph_dim=254, hidden_dim=896)
+        self.h_t_calculator = h_t_calculator if h_t_calculator else init_entropy_calculator()
+        
+        # 新增：保存model和tokenizer用于Φ(m(t))计算
+        self.model = model
+        self.tokenizer = tokenizer
     
     def compute_normalized_distance(self, 
                                     h_t: torch.Tensor,
@@ -203,7 +228,15 @@ class SemanticDriftCalculator:
         """
         # 1. 计算归一化锚点偏离度
         dist = self.compute_normalized_distance(h_t, anchor)
-        distmax = 2.0  # 归一化欧氏距离的理论最大值
+        
+        # 自适应distmax：基于向量范数的理论上界
+        # 对于L2归一化向量，最大距离为sqrt(2)≈1.414
+        # 但实际LLM hidden states通常未归一化，使用更大的基准
+        h_norm = torch.norm(h_t).item()
+        anchor_norm = torch.norm(anchor).item()
+        # 理论最大距离约为 ||h_t|| + ||G(t)||
+        distmax = max(h_norm + anchor_norm, 1.0)  # 至少为1避免除0
+        
         drift_base = dist / (distmax + self.epsilon)
         
         # 2. 计算局部稳定性修正
@@ -222,16 +255,14 @@ class SemanticDriftCalculator:
     
     def compute_s_t_batch(self,
                          hidden_states: torch.Tensor,
-                         c_t_list: np.ndarray,
-                         d_t_list: np.ndarray,
-                         m_t_list: np.ndarray) -> np.ndarray:
-        """批量计算序列中所有token的语义漂移系数
+                         tokens: List[str],
+                         attention_weights: Optional[torch.Tensor] = None) -> np.ndarray:
+        """批量计算序列中所有token的语义漂移系数（完整实现）
         
         Args:
             hidden_states: [seq_len, hidden_dim] 语义状态向量序列
-            c_t_list: [seq_len] 聚类密度序列
-            d_t_list: [seq_len] 平均欧氏距离序列
-            m_t_list: [seq_len] 形态-语义匹配度序列
+            tokens: [seq_len] token文本列表
+            attention_weights: [seq_len, seq_len] 注意力权重矩阵（可选，用于M(t)计算）
         
         Returns:
             s_t_array: [seq_len] 每个token的语义漂移系数
@@ -240,16 +271,49 @@ class SemanticDriftCalculator:
         s_t_array = np.zeros(seq_len)
         
         for t in range(seq_len):
-            # 计算全局语义锚点 G(t)
+            # 1. 计算全局语义锚点 G(t)
             anchor = self.anchor_calculator.compute_anchor(hidden_states, t)
             
-            # 提取当前token的语义向量和相关指标
+            # 2. 提取当前token的语义向量和文本
             h_t = hidden_states[t]
-            c_t = c_t_list[t]
-            d_t = d_t_list[t]
-            m_t = m_t_list[t]
+            token_text = tokens[t]
             
-            # 计算语义漂移系数
+            # 3. 计算形态-语义匹配度 M(t)（复用 m_t_calculator.py）
+            m_t = compute_m_t_full(
+                h_t=h_t,
+                token_text=token_text,
+                tokens=tokens,
+                token_idx=t,
+                hidden_states=hidden_states,
+                model=self.model,  # 传入LLM模型
+                tokenizer=self.tokenizer,  # 传入分词器
+                attention_weights=attention_weights,
+                beta=0.2
+            )
+            
+            # 4. 计算聚类密度 C(t)（复用 c_t_calculator.py）
+            c_t = compute_c_t(
+                h_t=h_t,
+                hidden_states=hidden_states,
+                token_idx=t,
+                k=3,  # 上下文窗口大小
+                theta=0.5,  # 相似度阈值
+                alpha=0.4,  # 形态修正权重
+                precomputed_m_t=m_t  # 传入已计算的M(t)
+            )
+            
+            # 5. 计算平均欧氏距离 D(t)（复用 d_t_calculator.py）
+            d_t = compute_d_t(
+                h_t=h_t,
+                hidden_states=hidden_states,
+                token_idx=t,
+                sentence_length=seq_len,
+                window_size=3,
+                sim_threshold=0.5,
+                precomputed_m_t=m_t  # 传入已计算的M(t)
+            )
+            
+            # 6. 计算语义漂移系数 S(t)
             s_t = self.compute_s_t(h_t, anchor, c_t, d_t, m_t)
             s_t_array[t] = s_t
         
@@ -259,7 +323,12 @@ class SemanticDriftCalculator:
 def init_drift_calculator(decay_lambda: float = 0.05,
                           omega: float = 0.4,
                           nu: float = 0.3,
-                          mu: float = 0.25) -> SemanticDriftCalculator:
+                          mu: float = 0.25,
+                          morph_extractor: Optional[ChineseMorphExtractor] = None,
+                          morph_embedding: Optional[MorphEmbedding] = None,
+                          h_t_calculator: Optional[object] = None,
+                          model=None,  # 新增
+                          tokenizer=None) -> SemanticDriftCalculator:  # 新增
     """初始化语义漂移系数计算器（便于main.py调用）
     
     Args:
@@ -267,6 +336,11 @@ def init_drift_calculator(decay_lambda: float = 0.05,
         omega: 聚类密度权重（默认0.4）
         nu: 平均距离权重（默认0.3）
         mu: 形态修正系数（默认0.25）
+        morph_extractor: 形态特征提取器（可选，不提供则自动创建）
+        morph_embedding: 形态嵌入模型（可选，不提供则自动创建）
+        h_t_calculator: H(t)计算器（可选，不提供则自动创建）
+        model: LLM模型（可选，用于Φ(m(t))）
+        tokenizer: 分词器（可选，用于Φ(m(t))）
     
     Returns:
         drift_calculator: 语义漂移系数计算器实例
@@ -275,5 +349,10 @@ def init_drift_calculator(decay_lambda: float = 0.05,
         decay_lambda=decay_lambda,
         omega=omega,
         nu=nu,
-        mu=mu
+        mu=mu,
+        morph_extractor=morph_extractor,
+        morph_embedding=morph_embedding,
+        h_t_calculator=h_t_calculator,
+        model=model,
+        tokenizer=tokenizer
     )

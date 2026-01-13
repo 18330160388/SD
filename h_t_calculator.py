@@ -98,7 +98,7 @@ class SenseActivationModel(nn.Module):
     - syn(t): 句法搭配特征（简化为位置和邻域特征）
     """
     
-    def __init__(self, hidden_dim: int = 896, morph_dim: int = 224, 
+    def __init__(self, hidden_dim: int = 896, morph_dim: int = 254, 
                  context_window: int = 3, max_senses: int = 15):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -116,7 +116,7 @@ class SenseActivationModel(nn.Module):
             nn.ReLU()
         )
         
-        # 融合MLP：h(d) + c(d) + m(224) + syn(64) → sense_dim
+        # 融合MLP：h(d) + c(d) + m(254) + syn(64) → sense_dim
         input_dim = hidden_dim + hidden_dim + morph_dim + 64
         self.sense_mlp = nn.Sequential(
             nn.Linear(input_dim, 512),
@@ -215,6 +215,10 @@ class SenseActivationModel(nn.Module):
         Returns:
             sense_probs: [num_senses] 归一化的义项激活概率
         """
+        # [调试] 输出拼接前的形态特征
+        # print(f"  [ContextFeatureExtractor.forward] morph_feature维度: {morph_feature.shape}")
+        # print(f"  [ContextFeatureExtractor.forward] morph_feature前5维: {morph_feature[:5]}")
+        
         # 拼接所有特征
         fused_features = torch.cat([
             hidden_state,
@@ -223,13 +227,16 @@ class SenseActivationModel(nn.Module):
             syntax_feature
         ], dim=0)  # [hidden_dim + hidden_dim + morph_dim + 64]
         
+        # [调试] 输出融合后的特征
+        # print(f"  [ContextFeatureExtractor.forward] fused_features维度: {fused_features.shape}")
+        # print(f"  [ContextFeatureExtractor.forward] fused中morph部分(1792:2046): {fused_features[1792:1797]}")
+        
         # MLP映射到义项空间
         sense_logits = self.sense_mlp(fused_features)  # [max_senses]
         
         # 只取前num_senses个logits并归一化
         sense_logits = sense_logits[:num_senses]  # [num_senses]
         sense_probs = F.softmax(sense_logits, dim=0)  # [num_senses]
-        
         return sense_probs
 
 
@@ -239,19 +246,22 @@ class PolysemyEntropyCalculator:
     完整实现文档3-3定义的多义性熵计算管线
     """
     
-    def __init__(self, hidden_dim: int = 896, morph_dim: int = 224,
-                 epsilon: float = 1e-8, gamma: float = 0.08):
+    def __init__(self, hidden_dim: int = 896, morph_dim: int = 254,
+                 epsilon: float = 1e-8, gamma: float = 0.08, 
+                 use_trained_embedding: bool = True):
         """
         Args:
             hidden_dim: 语义向量维度
             morph_dim: 形态特征维度
             epsilon: 正则化项，避免log(0)
             gamma: 语境修正因子权重系数
+            use_trained_embedding: 是否使用训练好的MorphEmbedding
         """
         self.hidden_dim = hidden_dim
         self.morph_dim = morph_dim
         self.epsilon = epsilon
         self.gamma = gamma
+        self.use_trained_embedding = use_trained_embedding
         
         # 初始化多义词词典
         self.polysemy_dict = PolysemyDictionary()
@@ -259,12 +269,27 @@ class PolysemyEntropyCalculator:
         # 初始化义项激活模型
         self.sense_model = SenseActivationModel(
             hidden_dim=hidden_dim,
-            morph_dim=morph_dim
+            morph_dim=1  # 只用M(t)标量
         )
         
-        # 初始化形态特征提取器（延迟导入避免循环依赖）
-        from m_t_calculator import ChineseMorphExtractor
+        # 初始化形态特征提取器和嵌入模型（延迟导入避免循环依赖）
+        from m_t_calculator import ChineseMorphExtractor, MorphEmbedding
         self.morph_extractor = ChineseMorphExtractor()
+        
+        # 加载训练好的MorphEmbedding
+        if use_trained_embedding:
+            from pathlib import Path
+            self.morph_embedding = MorphEmbedding(morph_dim=morph_dim, hidden_dim=hidden_dim)
+            model_path = Path(__file__).parent / "train_morph_embedding" / "morph_embedding_best.pt"
+            if model_path.exists():
+                self.morph_embedding.load_state_dict(torch.load(model_path, map_location='cpu'))
+                self.morph_embedding.eval()
+                print(f"[H(t)计算器] 已加载训练好的MorphEmbedding: {model_path}")
+            else:
+                print(f"[H(t)计算器-警告] 未找到训练权重: {model_path}")
+                self.morph_embedding = None
+        else:
+            self.morph_embedding = None
     
     def compute_collocation_strength(self, tokens: List[str], 
                                     token_idx: int) -> float:
@@ -279,7 +304,7 @@ class PolysemyEntropyCalculator:
         Returns:
             colloc_strength: 搭配强度 ∈ [0, 1]
         """
-        # 常见强搭配模式（可扩展为搭配词典）
+                # ↑误缩进残留，已移至SenseActivationModel初始化参数
         strong_collocations = {
             # "打"的常见搭配
             ("打", "电话"): 1.0,
@@ -445,6 +470,28 @@ class PolysemyEntropyCalculator:
             else:
                 m_t = m_t_raw
             
+            # 使用训练好的MorphEmbedding映射：m(t) → Φ(m(t))
+            if self.morph_embedding is not None:
+                with torch.no_grad():
+                    m_t_input = m_t.unsqueeze(0)  # [1, 254]
+                    phi_m_t = self.morph_embedding(m_t_input).squeeze(0)  # [896]
+                
+                # [调试] 输出形态特征嵌入信息
+                if t < 3:  # 只输出前3个token避免刷屏
+                    print(f"\n[H(t)计算-形态特征] Token '{token}' (位置{t})")
+                    print(f"  原始m(t): 维度{m_t.shape}, 非零={torch.count_nonzero(m_t).item()}")
+                    print(f"    前5维: {m_t[:5].numpy()}")
+                    print(f"  Φ(m(t)): 维度{phi_m_t.shape}")
+                    print(f"    前5维: {phi_m_t[:5].numpy()}")
+                    print(f"    范数: {torch.norm(phi_m_t).item():.6f}")
+                    print(f"    均值: {phi_m_t.mean().item():.6f}")
+                
+                m_t = phi_m_t  # 使用嵌入后的特征
+            else:
+                # 如果没有训练模型，输出警告
+                if t == 0:
+                    print(f"[H(t)计算-警告] 未加载MorphEmbedding，使用原始254维m(t)")
+            
             syn_t = self.sense_model.extract_syntax_features(hidden_states, t)  # [64]
             
             # 计算义项激活概率
@@ -486,11 +533,19 @@ class PolysemyEntropyCalculator:
 
 
 def init_entropy_calculator(hidden_dim: int = 896, 
-                           morph_dim: int = 224) -> PolysemyEntropyCalculator:
-    """初始化多义性熵计算器（便于main.py调用）"""
+                           morph_dim: int = 254,
+                           use_trained_embedding: bool = True) -> PolysemyEntropyCalculator:
+    """初始化多义性熵计算器（便于main.py调用）
+    
+    Args:
+        hidden_dim: 语义向量维度
+        morph_dim: 形态特征维度
+        use_trained_embedding: 是否使用训练好的MorphEmbedding
+    """
     return PolysemyEntropyCalculator(
         hidden_dim=hidden_dim,
-        morph_dim=morph_dim
+        morph_dim=morph_dim,
+        use_trained_embedding=use_trained_embedding
     )
 
 
