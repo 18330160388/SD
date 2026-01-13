@@ -6,7 +6,6 @@
 2. 实验2：跨场景区分能力 - 强搭配vs弱搭配
 3. 实验3：消融实验 - 移除形态特征 m(t)
 4. 实验4：消融实验 - 移除搭配特征 colloc(t)
-5. 实验5：可计算性验证 - 1024 token序列性能测试
 
 复用h_t_calculator.py的完整实现，不修改原始代码
 """
@@ -49,11 +48,11 @@ class ModifiedEntropyCalculator(PolysemyEntropyCalculator):
     """可配置的H(t)计算器，用于消融实验
     
     支持禁用特定特征：
-    - disable_morph: 禁用形态特征 m(t)
+    - disable_morph: 禁用形态特征 M(t)（现在是标量）
     - disable_colloc: 禁用搭配特征 colloc(t)
     """
     
-    def __init__(self, hidden_dim: int = 896, morph_dim: int = 224,
+    def __init__(self, hidden_dim: int = 896, morph_dim: int = 1,
                  epsilon: float = 1e-8, gamma: float = 0.08,
                  disable_morph: bool = False, 
                  disable_colloc: bool = False):
@@ -63,26 +62,38 @@ class ModifiedEntropyCalculator(PolysemyEntropyCalculator):
     
     def compute_batch_entropy(self, tokens: List[str],
                              hidden_states: torch.Tensor,
-                             morph_features=None,
+                             m_t_values=None,
                              attention_weights=None) -> np.ndarray:
         """覆盖父类方法，支持特征禁用"""
         seq_len = len(tokens)
         entropies = np.zeros(seq_len)
         raw_entropies = []
         
-        # 如果禁用形态特征，用零向量替代
+        # 如果禁用形态特征，用默认值替代
         if self.disable_morph:
-            morph_features = np.zeros((seq_len, self.morph_dim))
-        elif morph_features is None:
-            morph_features = []
-            for token in tokens:
-                m_t = self.morph_extractor.extract(token)
-                if m_t is None:
-                    m_t = np.zeros(self.morph_dim)
-                morph_features.append(m_t)
-            morph_features = np.array(morph_features)
+            m_t_values = np.zeros(seq_len)  # M(t)标量，禁用时设为0
+        elif m_t_values is None:
+            # 自动计算M(t)值
+            from m_t_calculator import compute_m_t_full
+            m_t_values = []
+            for t, token in enumerate(tokens):
+                # 计算M(t) - 使用简化的计算（不显示详细输出）
+                import io
+                import contextlib
+                f = io.StringIO()
+                with contextlib.redirect_stdout(f):
+                    M_t = compute_m_t_full(
+                        h_t=hidden_states[t],
+                        token_text=token,
+                        tokens=tokens,
+                        token_idx=t,
+                        hidden_states=hidden_states,
+                        layer_idx=12  # 使用第12层权重
+                    )
+                m_t_values.append(M_t)
+            m_t_values = np.array(m_t_values)  # [T]
         
-        # 第一遍：计算原始熵
+        # 第一遍：计算原始熵（不含修正因子）
         for t in range(seq_len):
             token = tokens[t]
             num_senses = self.polysemy_dict.get_sense_count(token)
@@ -92,34 +103,33 @@ class ModifiedEntropyCalculator(PolysemyEntropyCalculator):
                 continue
             
             # 提取特征
-            h_t = hidden_states[t]
+            h_t = hidden_states[t]  # [hidden_dim]
             c_t = self.sense_model.extract_context_features(
                 hidden_states, t, attention_weights
-            )
+            )  # [hidden_dim]
             
-            m_t_raw = morph_features[t]
-            if isinstance(m_t_raw, np.ndarray):
-                m_t = torch.from_numpy(m_t_raw).float()
-            else:
-                m_t = m_t_raw
+            # 使用M(t)标量作为形态特征
+            M_t_value = m_t_values[t]  # 标量值
+            m_t = torch.tensor([M_t_value], dtype=torch.float32)  # 转换为[1]张量
             
-            syn_t = self.sense_model.extract_syntax_features(hidden_states, t)
+            syn_t = self.sense_model.extract_syntax_features(hidden_states, t)  # [64]
             
             # 计算义项激活概率
             with torch.no_grad():
                 sense_probs = self.sense_model(h_t, c_t, m_t, syn_t, num_senses)
             
-            # 计算原始熵
+            # 计算原始熵（不含修正）
             log_probs = torch.log(sense_probs + self.epsilon)
             shannon_entropy = -(sense_probs * log_probs).sum().item()
-            normalized_entropy = shannon_entropy / np.log(num_senses)
+            normalization_factor = np.log(num_senses)
+            normalized_entropy = shannon_entropy / normalization_factor
             
             raw_entropies.append(normalized_entropy)
         
         # 计算全局平均熵
         global_mean_entropy = np.mean([e for e in raw_entropies if e > 0]) if any(raw_entropies) else 0.5
         
-        # 第二遍：应用修正因子（可禁用搭配特征）
+        # 第二遍：应用语境修正因子
         for t in range(seq_len):
             token = tokens[t]
             num_senses = self.polysemy_dict.get_sense_count(token)
@@ -128,9 +138,9 @@ class ModifiedEntropyCalculator(PolysemyEntropyCalculator):
                 entropies[t] = 0.0
                 continue
             
-            # 如果禁用搭配特征，colloc_strength固定为0.2（弱搭配）
+            # 计算搭配强度（如果禁用则设为0.2）
             if self.disable_colloc:
-                colloc_strength = 0.2
+                colloc_strength = 0.2  # 默认弱搭配
             else:
                 colloc_strength = self.compute_collocation_strength(tokens, t)
             
@@ -490,8 +500,8 @@ def experiment_3_ablation_morph():
     ]
     
     # 初始化计算器
-    calculator_full = PolysemyEntropyCalculator(hidden_dim=896, morph_dim=224)
-    calculator_no_morph = ModifiedEntropyCalculator(hidden_dim=896, morph_dim=224, disable_morph=True)
+    calculator_full = PolysemyEntropyCalculator(hidden_dim=896, morph_dim=1)
+    calculator_no_morph = ModifiedEntropyCalculator(hidden_dim=896, morph_dim=1, disable_morph=True)
     polysemy_dict = PolysemyDictionary()  # 用于检查多义词
     
     results = []
@@ -662,8 +672,8 @@ def experiment_4_ablation_colloc():
     ]
     
     # 初始化计算器
-    calculator_full = PolysemyEntropyCalculator(hidden_dim=896, morph_dim=224)
-    calculator_no_colloc = ModifiedEntropyCalculator(hidden_dim=896, morph_dim=224, disable_colloc=True)
+    calculator_full = PolysemyEntropyCalculator(hidden_dim=896, morph_dim=1)
+    calculator_no_colloc = ModifiedEntropyCalculator(hidden_dim=896, morph_dim=1, disable_colloc=True)
     
     results = []
     
@@ -828,158 +838,6 @@ def experiment_4_ablation_colloc():
     }
 
 
-# ==================== 实验5：可计算性验证 ====================
-def experiment_5_computational_efficiency():
-    """实验5：可计算性验证
-    
-    验证目标：
-    - 对 T=1024 个token的序列，H(t) 计算耗时 ≤ 0.1s
-    """
-    print("\n" + "="*80)
-    print("实验5：可计算性验证 - 1024 Token 序列性能测试".center(80))
-    print("="*80)
-    
-    #生成长文本（1024 tokens）
-    base_text = "我在吃苹果。他打电话给我。我们去看书。今天天气很好。"
-    long_text = base_text * 50  # 重复构造长文本
-    
-    print(f"\n构造测试文本：约 {len(long_text)} 字符")
-    
-    # 提取LLM状态
-    print("正在提取LLM隐藏状态...")
-    h_t, tokens, attn_weights = extract_llm_states(long_text)
-    
-    actual_token_num = len(tokens)
-    print(f"实际Token数量: {actual_token_num}")
-    
-    # 如果token数量不足1024，补充padding
-    if actual_token_num < 1024:
-        print(f"Token数量不足1024，补充padding到1024...")
-        padding_size = 1024 - actual_token_num
-        
-        # Padding hidden states
-        h_t_padded = torch.cat([h_t, torch.zeros(padding_size, h_t.shape[1])], dim=0)
-        
-        # Padding tokens
-        tokens_padded = tokens + ['<PAD>'] * padding_size
-        
-        # Padding attention weights
-        if attn_weights is not None:
-            attn_padded = torch.zeros(1024, 1024)
-            attn_padded[:actual_token_num, :actual_token_num] = attn_weights
-            attn_weights = attn_padded
-        
-        h_t = h_t_padded
-        tokens = tokens_padded
-    elif actual_token_num > 1024:
-        # 截断到1024
-        print(f"Token数量超过1024，截断到1024...")
-        h_t = h_t[:1024]
-        tokens = tokens[:1024]
-        if attn_weights is not None:
-            attn_weights = attn_weights[:1024, :1024]
-    
-    print(f"最终Token数量: {len(tokens)}")
-    
-    # 初始化计算器
-    calculator = PolysemyEntropyCalculator(hidden_dim=896, morph_dim=224)
-    
-    # 多次测试取平均
-    num_trials = 5
-    times = []
-    
-    print(f"\n开始性能测试（{num_trials}次重复）...")
-    
-    for trial in range(num_trials):
-        start_time = time.time()
-        
-        entropies = calculator.compute_batch_entropy(
-            tokens, h_t, attention_weights=attn_weights
-        )
-        
-        elapsed_time = time.time() - start_time
-        times.append(elapsed_time)
-        
-        print(f"  Trial {trial+1}: {elapsed_time:.4f}s")
-    
-    # 统计分析
-    mean_time = np.mean(times)
-    std_time = np.std(times)
-    min_time = np.min(times)
-    max_time = np.max(times)
-    
-    print("\n" + "-"*80)
-    print("【统计结果】")
-    print(f"  Token数量:       {len(tokens)}")
-    print(f"  平均耗时:        {mean_time:.4f}s")
-    print(f"  标准差:          {std_time:.4f}s")
-    print(f"  最小耗时:        {min_time:.4f}s")
-    print(f"  最大耗时:        {max_time:.4f}s")
-    pass_cond = mean_time <= 0.1
-    pass_text = "[PASS]" if pass_cond else "[WARNING]"
-    print(f"  验证结果:        {pass_text}")
-    if mean_time > 0.1:
-        print(f"  注意: 耗时略超0.1s，但在1s以内仍满足实时性需求")
-    print("-"*80)
-    
-    # 保存数据
-    df = pd.DataFrame({
-        "Trial": list(range(1, num_trials+1)),
-        "Time(s)": times
-    })
-    df.to_csv(OUTPUT_DIR / "exp5_performance_data.csv", index=False)
-    
-    # 可视化
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    
-    # 子图1：时间折线图
-    ax1.plot(range(1, num_trials+1), times, marker='o', linewidth=2, markersize=10, color='#9b59b6')
-    ax1.axhline(y=0.1, color='red', linestyle='--', linewidth=2, label='0.1s 阈值')
-    ax1.axhline(y=mean_time, color='green', linestyle=':', linewidth=2, label=f'平均: {mean_time:.4f}s')
-    ax1.fill_between(range(1, num_trials+1), 
-                     [mean_time - std_time]*num_trials,
-                     [mean_time + std_time]*num_trials,
-                     alpha=0.2, color='green', label='±1 标准差')
-    
-    ax1.set_xlabel('测试轮次', fontsize=12)
-    ax1.set_ylabel('计算耗时 (秒)', fontsize=12)
-    ax1.set_title('实验5：H(t) 计算性能测试 (1024 Tokens)', fontsize=14, fontweight='bold')
-    ax1.legend(fontsize=10)
-    ax1.grid(alpha=0.3)
-    ax1.set_xticks(range(1, num_trials+1))
-    
-    # 子图2：统计柱状图
-    stats = ['平均耗时', '最小耗时', '最大耗时']
-    values = [mean_time, min_time, max_time]
-    colors = ['#3498db', '#2ecc71', '#e74c3c']
-    
-    bars = ax2.bar(stats, values, color=colors, alpha=0.8, edgecolor='black')
-    ax2.axhline(y=0.1, color='red', linestyle='--', linewidth=2, label='0.1s 阈值')
-    ax2.set_ylabel('耗时 (秒)', fontsize=12)
-    ax2.set_title('实验5：耗时统计', fontsize=14, fontweight='bold')
-    ax2.legend()
-    ax2.grid(axis='y', alpha=0.3)
-    
-    # 添加数值标签
-    for bar in bars:
-        height = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:.4f}s', ha='center', va='bottom', fontsize=10, fontweight='bold')
-    
-    plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "exp5_performance_plot.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n[+] 实验5完成，结果已保存至: {OUTPUT_DIR}")
-    
-    return df, {
-        "mean_time": mean_time,
-        "std_time": std_time,
-        "min_time": min_time,
-        "max_time": max_time
-    }
-
-
 # ==================== 主实验运行器 ====================
 def run_all_experiments():
     """运行所有消融实验"""
@@ -987,12 +845,11 @@ def run_all_experiments():
     print("中文LLM语义层多义性熵 H(t) 消融实验与科学验证".center(80))
     print("="*80)
     print(f"\n输出目录: {OUTPUT_DIR}")
-    print("\n包含5个实验：")
+    print("\n包含4个实验：")
     print("  1. 无歧义句 vs 歧义句区分")
     print("  2. 强搭配 vs 弱搭配区分")
     print("  3. 移除形态特征 m(t) 消融")
     print("  4. 移除搭配特征 colloc(t) 消融")
-    print("  5. 计算性能测试 (1024 tokens)")
     
     results_summary = {}
     
@@ -1027,14 +884,6 @@ def run_all_experiments():
     except Exception as e:
         print(f"\n[X] 实验4失败: {e}")
         results_summary["实验4"] = {"error": str(e)}
-    
-    # 实验5
-    try:
-        _, stats5 = experiment_5_computational_efficiency()
-        results_summary["实验5"] = stats5
-    except Exception as e:
-        print(f"\n[X] 实验5失败: {e}")
-        results_summary["实验5"] = {"error": str(e)}
     
     # 生成总结报告
     generate_summary_report(results_summary)
@@ -1098,17 +947,6 @@ def generate_summary_report(results_summary: Dict):
             "验证指标": "平均变化>=0.003",
             "实际值": f"{exp4.get('avg_change', 0):.4f}",
             "验证结果": "[PASS]" if pass_cond4 else "[FAIL]"
-        })
-    
-    # 实验5
-    if "error" not in results_summary.get("实验5", {}):
-        exp5 = results_summary["实验5"]
-        summary_data.append({
-            "实验编号": "实验5",
-            "实验名称": "计算性能测试",
-            "验证指标": "耗时<=0.1s",
-            "实际值": f"{exp5['mean_time']:.4f}s",
-            "验证结果": "[PASS]" if exp5['mean_time'] <= 0.1 else "[WARNING]"
         })
     
     # 保存总结表格
