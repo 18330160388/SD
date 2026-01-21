@@ -205,6 +205,8 @@ class SenseActivationModel(nn.Module):
                 num_senses: int) -> torch.Tensor:
         """计算义项激活概率分布
         
+        替代方案：研究阶段使用均匀分布，体现最大多义性熵
+        
         Args:
             hidden_state: [hidden_dim] 当前token语义向量 h(t)
             context_feature: [hidden_dim] 上下文特征 c(t)
@@ -215,26 +217,13 @@ class SenseActivationModel(nn.Module):
         Returns:
             sense_probs: [num_senses] 归一化的义项激活概率
         """
-        # [调试] 输出M(t)特征
-        # print(f"  [SenseActivationModel.forward] M(t)值: {m_t_value.item():.6f}")
+        # ===== 替代方案：均匀分布 =====
+        # 研究阶段使用均匀分布 p(s|t) = 1/|S_t|，体现最大多义性熵
+        # 这允许我们用固定语句测试H(t)计算的整体流程
         
-        # 拼接所有特征
-        fused_features = torch.cat([
-            hidden_state,
-            context_feature,
-            m_t_value,
-            syntax_feature
-        ], dim=0)  # [hidden_dim + hidden_dim + 1 + 64]
+        uniform_prob = 1.0 / num_senses
+        sense_probs = torch.full((num_senses,), uniform_prob, dtype=torch.float32)
         
-        # [调试] 输出融合后的特征
-        # print(f"  [SenseActivationModel.forward] fused_features维度: {fused_features.shape}")
-        
-        # MLP映射到义项空间
-        sense_logits = self.sense_mlp(fused_features)  # [max_senses]
-        
-        # 只取前num_senses个logits并归一化
-        sense_logits = sense_logits[:num_senses]  # [num_senses]
-        sense_probs = F.softmax(sense_logits, dim=0)  # [num_senses]
         return sense_probs
 
 

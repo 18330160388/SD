@@ -134,15 +134,15 @@ def compute_c_t(
         mean_vec = torch.mean(valid_vectors, dim=0)  # 局部语义中心
         cov_matrix = torch.cov(valid_vectors.T)  # (d, d)，协方差矩阵
         
-        # 计算椭圆体体积：V = (π^(d/2) / Γ(d/2+1)) * sqrt(det(Σ))
+        # 计算椭圆体体积：使用归一化体积避免数值过大
+        # V = sqrt(det(Σ)) / (π^(d/2) / Γ(d/2+1)) 的倒数，作为密度度量
         d = h_t.shape[0]  # 语义向量维度
         det_cov = torch.det(cov_matrix).item() if d > 1 else 1.0
         det_cov = max(det_cov, eps)  # 避免负行列式或零行列式
         
-        # 伽马函数 Γ(d/2+1)
-        gamma_value = gamma_func(d/2 + 1)
-        volume_coeff = np.power(np.pi, d/2) / gamma_value
-        V_local = volume_coeff * np.sqrt(det_cov)
+        # 使用行列式的平方根作为体积度量（归一化）
+        # 对于密度计算，我们需要体积的倒数，所以使用 1/sqrt(det_cov)
+        V_local = 1.0 / np.sqrt(det_cov)
         V_local = max(V_local, eps)  # 确保体积为正
 
     # 4. 计算中文形态-语义修正因子 γ(M(t))

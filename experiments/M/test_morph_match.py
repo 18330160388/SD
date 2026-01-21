@@ -7,7 +7,7 @@ from m_t_calculator import compute_m_t_full
 from llm_hidden_extractor import extract_hidden_states
 
 # 测试文本
-text = "我爱吃江米条"
+text = "江河湖海都是水"
 
 # 提取隐藏状态
 hidden_states, token_num, tokenizer, inputs, attn_weights = extract_hidden_states(

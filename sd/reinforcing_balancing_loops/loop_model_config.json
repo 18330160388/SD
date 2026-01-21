@@ -1,0 +1,17 @@
+{
+  "model_type": "reinforcing_balancing_loops_system_dynamics",
+  "parameters": {
+    "R1_GAIN": 0.6,
+    "B1_SEMANTIC_GAIN": 0.3,
+    "B1_SEMANTIC_DELAY": 1,
+    "B2_DISTANCE_GAIN": 0.2,
+    "B2_DISTANCE_THRESHOLD": 0.001,
+    "FEEDBACK_DELAY": 1
+  },
+  "description": "基于系统动力学增强回路和调节回路组合的语义演化预测模型",
+  "loop_structure": {
+    "R1": "增强回路：前层聚合驱动后层聚合",
+    "B1": "调节回路：语义稳定性抑制过度聚合",
+    "B2": "调节回路：距离变化增加聚合阻力"
+  }
+}
