@@ -1,308 +1,246 @@
-import torch
 import numpy as np
-from scipy.spatial.distance import cosine
-from typing import Optional
+import torch
+from llm_hidden_extractor import extract_hidden_states
 
-def compute_local_sectional_curvature(
-    h_t: torch.Tensor,
-    hidden_states: torch.Tensor,
-    token_idx: int,
-    sentence_length: int,
-    window_size: int = 3,
-    sim_threshold: float = 0.3,
-    gram_threshold: float = 1e-4,
-    alpha: float = 0.25,
-    epsilon: float = 1e-8,
-    precomputed_m_t: Optional[float] = None,
-    unit_normalize: bool = True
-) -> float:
+# =====================
+# 端到端语义曲率分析：向量提取 → K(t)计算 → Z-score归一化 → 聚集/发散分析
+# =====================
+
+def compute_covariance_matrix(window_vectors):
     """
-    计算局部截面曲率K(t) - 基于向量几何关系
-    
-    K(t) = [Cov(h(t),h*(t))·‖h(t)‖²₂ - (h(t)ᵀh*(t))·Cov(h(t),h(t))] / 
-           [Gram(h(t),h*(t))·Var(h(t)) + ε] · γ(M(t))
-    
-    几何解释：
-    - Cov(h(t),h*(t)): 两个向量间的几何协方差（夹角余弦）
-    - Var(h(t)): 向量相对于局部上下文的离散程度（1-平均相似度）
-    - Gram(h(t),h*(t)): 向量张成的平行四边形面积
-    - γ(M(t)): 形态-语义修正因子
-    
-    注意：使用原始向量计算几何关系，确保数值稳定性
+    计算窗口内向量的协方差矩阵 Σ(t)
+    参数：
+        window_vectors: 列表，包含窗口内的向量 (N, hidden_dim)
+    返回：
+        cov_matrix: (hidden_dim, hidden_dim) 的协方差矩阵
     """
-    # 1. 转换为numpy数组
-    h_t_np = h_t.detach().cpu().numpy() if h_t.requires_grad else h_t.cpu().numpy()
-    hidden_states_np = hidden_states.detach().cpu().numpy() if hidden_states.requires_grad else hidden_states.cpu().numpy()
+    if len(window_vectors) == 0:
+        return np.zeros((896, 896))  # 默认896维
+    vectors = np.array(window_vectors)  # (N, hidden_dim)
+    # 中心化
+    mean_vec = np.mean(vectors, axis=0)  # (hidden_dim,)
+    centered = vectors - mean_vec  # (N, hidden_dim)
+    # 协方差矩阵
+    cov_matrix = np.cov(centered.T, ddof=1)  # (hidden_dim, hidden_dim)
+    return cov_matrix
 
-    # 2. 构建局部上下文窗口 [t-k, t+k]
-    start_idx = max(0, token_idx - window_size)
-    end_idx = min(sentence_length - 1, token_idx + window_size)
-    local_window = hidden_states_np[start_idx:end_idx+1]
-    
-    # 3. 有效向量筛选：语义相关性 + 线性无关性（双筛选）
-    # 用归一化向量做筛选（判断语义相似度）
-    h_t_norm = h_t_np / (np.linalg.norm(h_t_np) + epsilon)
-    S_eff = []
-    S_eff_original = []  # 保存原始向量用于协方差计算
-    S_eff_info = []  # 保存每个有效向量的详细信息（用于调试输出）
-    
-    for idx, h_s in enumerate(local_window):
-        # 排除自身
-        global_idx = start_idx + idx
-        if global_idx == token_idx:
-            continue
-            
-        # 3.1 语义相关性：cosine(h_t, h_s) ≥ θ（用归一化向量）
-        h_s_norm = h_s / (np.linalg.norm(h_s) + epsilon)
-        cos_sim = np.dot(h_t_norm, h_s_norm)
-        if cos_sim < sim_threshold:
-            continue
-        
-        # 3.2 线性无关性：Gram(h_t, h_s) > δ（用归一化向量）
-        # Gram(a,b) = ‖a‖²₂·‖b‖²₂ - (aᵀb)²
-        norm_h_t = np.linalg.norm(h_t_norm)
-        norm_h_s = np.linalg.norm(h_s_norm)
-        dot_product = np.dot(h_t_norm, h_s_norm)
-        gram_det = (norm_h_t ** 2) * (norm_h_s ** 2) - (dot_product ** 2)
-        
-        if gram_det > gram_threshold:
-            S_eff.append(h_s_norm)
-            S_eff_original.append(h_s)  # 保存原始向量
-            S_eff_info.append({
-                'idx': global_idx,
-                'cosine': cos_sim,
-                'gram': gram_det
-            })
-    
-    # 如果没有通过双筛选得到任何有效向量，使用回退策略：
-    # 在局部窗口中选择与 h_t 余弦相似度最高的向量（排除自身）作为备选 h*，
-    # 以避免所有 K(t) 为 0 的情况（尤其是 sim_threshold 设得偏高时）。
-    if len(S_eff) < 1:
-        best_cos = -1.0
-        best_vec_norm = None
-        best_vec_orig = None
-        best_idx = -1
-        for idx, h_s in enumerate(local_window):
-            global_idx = start_idx + idx
-            if global_idx == token_idx:
-                continue
-            h_s_norm = h_s / (np.linalg.norm(h_s) + epsilon)
-            cos_sim = float(np.dot(h_t_norm, h_s_norm))
-            if cos_sim > best_cos:
-                best_cos = cos_sim
-                best_vec_norm = h_s_norm
-                best_vec_orig = h_s
-                best_idx = global_idx
-
-        if best_vec_norm is not None:
-            S_eff.append(best_vec_norm)
-            S_eff_original.append(best_vec_orig)
-            S_eff_info.append({
-                'idx': best_idx,
-                'cosine': best_cos,
-                'gram': max(1.0 - best_cos ** 2, 0.0)
-            })
-        else:
-            return 0.0  # 窗口内无其他向量，无法计算
-    
-    S_eff = np.array(S_eff)
-    S_eff_original = np.array(S_eff_original)
-
-    # 4. 选择核心上下文向量 h*_t（用归一化向量选择）
-    # h*(t) = argmax_{h_s ∈ S_eff} [cosine(h_t, h_s) · Gram(h_t, h_s)]
-    best_score = -float('inf')
-    h_star_norm = None
-    h_star_original = None
-    h_star_idx = -1
-    for i, h_s_norm in enumerate(S_eff):
-        cos_sim = float(np.dot(h_t_norm, h_s_norm))
-        gram_det = max(1.0 - cos_sim ** 2, 0.0)
-        score = cos_sim * gram_det
-        if score > best_score:
-            best_score = score
-            h_star_norm = h_s_norm
-            h_star_original = S_eff_original[i]
-            h_star_idx = i
-
-    if h_star_original is None:
-        print(f"Token {token_idx}: 未能选出核心向量 h*，返回0")
+def compute_k_t(cov_matrix, m_t=0.5, epsilon=1e-8, zeta=0.3):
+    """
+    计算原始曲率 K(t)
+    K(t) = [det(Σ) + ε] / [(tr(Σ))² * (1 - ζ·M(t))²]
+    """
+    det_cov = np.linalg.det(cov_matrix)
+    trace_cov = np.trace(cov_matrix)
+    denominator = (trace_cov ** 2) * ((1 - zeta * m_t) ** 2)
+    if denominator == 0:
         return 0.0
+    k_t = (det_cov + epsilon) / denominator
+    return k_t
 
-    # 调试：打印 S_eff 大小与选中向量信息
-    try:
-        print(f"Token {token_idx}: |S_eff|={len(S_eff)}, selected_h*_idx={h_star_idx}, best_score={best_score:.6e}")
-    except Exception:
-        pass
-
-    # 按用户确认的实现：s 为向量维度索引（按维度 D 计算样本协方差/方差）
-    h_t_vec = h_t_np.astype(float)
-    h_star_vec = h_star_original.astype(float)
-
-    if unit_normalize:
-        # 单位化（用于核心项计算）
-        norm_ht = np.linalg.norm(h_t_vec) + epsilon
-        norm_hs = np.linalg.norm(h_star_vec) + epsilon
-        h_t_unit = h_t_vec / norm_ht
-        h_star_unit = h_star_vec / norm_hs
-
-        D = h_t_unit.shape[0]
-        mean_ht = float(np.mean(h_t_unit))
-        mean_hs = float(np.mean(h_star_unit))
-        if D > 1:
-            cov_h_t_h_star = float(np.sum((h_t_unit - mean_ht) * (h_star_unit - mean_hs)) / (D - 1))
-            var_h_t = float(np.sum((h_t_unit - mean_ht) ** 2) / (D - 1))
-        else:
-            cov_h_t_h_star = 0.0
-            var_h_t = epsilon
-
-        # Gram 与内积在单位化向量上计算，确保 Gram ∈ [0,1]
-        dot_h_t_h_star = float(np.dot(h_t_unit, h_star_unit))
-        norm_h_t_sq = float(np.dot(h_t_unit, h_t_unit))
-        norm_h_star_sq = float(np.dot(h_star_unit, h_star_unit))
-        gram_determinant = max(norm_h_t_sq * norm_h_star_sq - (dot_h_t_h_star ** 2), gram_threshold)
-    else:
-        # 使用原始向量进行统计量计算（不归一化）
-        D = h_t_vec.shape[0]
-        mean_ht = float(np.mean(h_t_vec))
-        mean_hs = float(np.mean(h_star_vec))
-        if D > 1:
-            cov_h_t_h_star = float(np.sum((h_t_vec - mean_ht) * (h_star_vec - mean_hs)) / (D - 1))
-            var_h_t = float(np.sum((h_t_vec - mean_ht) ** 2) / (D - 1))
-        else:
-            cov_h_t_h_star = 0.0
-            var_h_t = epsilon
-
-        dot_h_t_h_star = float(np.dot(h_t_vec, h_star_vec))
-        norm_h_t_sq = float(np.dot(h_t_vec, h_t_vec))
-        norm_h_star_sq = float(np.dot(h_star_vec, h_star_vec))
-        gram_determinant = max(norm_h_t_sq * norm_h_star_sq - (dot_h_t_h_star ** 2), gram_threshold)
-
-    # 计算原始曲率 K0 按照给定公式
-    numerator = cov_h_t_h_star * norm_h_t_sq - dot_h_t_h_star * var_h_t
-    denominator = gram_determinant * var_h_t + epsilon
-    K_0 = numerator / denominator
-
-    # 打印中间数值用于验算（使用单位化向量的统计量）
-    try:
-        cos_sim_display = S_eff_info[h_star_idx]['cosine'] if (0 <= h_star_idx < len(S_eff_info)) else float(dot_h_t_h_star)
-        kind = 'unit' if unit_normalize else 'raw'
-        print(f"Token {token_idx} DEBUG({kind}): mean_ht={mean_ht:.6e}, mean_hs={mean_hs:.6e}, cov={cov_h_t_h_star:.6e}, var={var_h_t:.6e}, dot={dot_h_t_h_star:.6e}, gram={gram_determinant:.6e}, cos={cos_sim_display:.6f}")
-    except Exception:
-        pass
-    
-    # 8. 获取形态-语义匹配度 M(t)
-    if precomputed_m_t is not None:
-        M_t = np.clip(precomputed_m_t, 0.0, 1.0)
-    else:
-        M_t = 0.5  # 默认值
-    
-    # 9. 计算修正因子 γ(M(t)) = 1 + α·sign(K₀)·M(t)
-    sign_K0 = np.sign(K_0)
-    gamma_M_t = 1.0 + alpha * sign_K0 * M_t
-    
-    # 10. 最终曲率
-    K_t = K_0 * gamma_M_t
-    
-    # 详细调试输出
-    print(f"\n{'='*80}")
-    print(f"Token {token_idx} 曲率计算详情:")
-    print(f"{'-'*80}")
-    print(f"【局部上下文】")
-    print(f"  窗口范围: [{start_idx}, {end_idx}]")
-    print(f"  有效向量数 |S_eff|: {len(S_eff_original)}")
-    print(f"  窗口大小 k: {window_size}")
-    print(f"  语义阈值 θ: {sim_threshold}")
-    print(f"  Gram阈值 δ: {gram_threshold}")
-    print(f"\n【有效向量集合 S_eff】")
-    for i, info in enumerate(S_eff_info):
-        marker = " ← 核心向量h*" if i == h_star_idx else ""
-        print(f"  [{i}] Token {info['idx']:2d}  |  cosine={info['cosine']:.4f}  |  Gram={info['gram']:.6e}  |  score={info['cosine']*info['gram']:.6e}{marker}")
-    print(f"\n【核心上下文向量 h*】")
-    if h_star_idx >= 0:
-        h_star_info = S_eff_info[h_star_idx]
-        print(f"  Token索引: {h_star_info['idx']}")
-        print(f"  余弦相似度: {h_star_info['cosine']:.6f}")
-        print(f"  Gram行列式: {h_star_info['gram']:.6e}")
-        print(f"  选择得分 (cosine×Gram): {best_score:.6e}")
-    
-    print(f"\n【几何统计参数】")
-    print(f"  几何协方差 Cov(h,h*): {cov_h_t_h_star:.6f} (夹角余弦)")
-    print(f"  几何方差 Var(h): {var_h_t:.6f} (1-平均相似度)")
-    print(f"  范数平方 ||h||^2: {norm_h_t_sq:.6f}")
-    print(f"  内积 h·h*: {dot_h_t_h_star:.6f}")
-    print(f"  Gram行列式: {gram_determinant:.6e}")
-    print(f"\n【曲率计算】")
-    print(f"  分子 = Cov·||h||^2 - (h·h*)·Var = {cov_h_t_h_star:.6f}×{norm_h_t_sq:.6f} - {dot_h_t_h_star:.6f}×{var_h_t:.6f}")
-    print(f"       = {cov_h_t_h_star * norm_h_t_sq:.6f} - {dot_h_t_h_star * var_h_t:.6f} = {numerator:.6f}")
-    print(f"  分母 = Gram·Var + ε = {gram_determinant:.6e}×{var_h_t:.6f} + {epsilon} = {denominator:.6e}")
-    print(f"  K₀(t) = 分子/分母 = {K_0:.6f}")
-    print(f"\n【形态-语义修正】")
-    print(f"  M(t) 形态匹配度: {M_t:.6f}")
-    print(f"  α 权重系数: {alpha}")
-    print(f"  sign(K₀): {sign_K0:+.0f}")
-    print(f"  γ(M(t)) = 1 + α·sign(K₀)·M(t) = 1 + {alpha}×{sign_K0:+.0f}×{M_t:.6f} = {gamma_M_t:.6f}")
-    print(f"\n【最终结果】")
-    print(f"  K(t) = K₀×γ = {K_0:.6f} × {gamma_M_t:.6f} = {K_t:.6f}")
-    print(f"{'='*80}\n")
-    
-    return float(K_t)
-
-# 批量计算函数（适配新增参数）
-def compute_curvature_batch(
-    hidden_states: torch.Tensor,
-    sentence_length: int,
-    window_size: int = 3,
-    sim_threshold: float = 0.3,
-    precomputed_m_t_list: Optional[list] = None,  # 批量传入M(t)
-    unit_normalize: bool = True
-) -> list:
-    """批量计算所有token的曲率"""
-    curvatures = []
-    for token_idx in range(sentence_length):
-        h_t = hidden_states[token_idx]
-        # 匹配当前token的M(t)
-        m_t = precomputed_m_t_list[token_idx] if precomputed_m_t_list else None
-        k_t = compute_local_sectional_curvature(
-            h_t=h_t,
-            hidden_states=hidden_states,
-            token_idx=token_idx,
-            sentence_length=sentence_length,
-            window_size=window_size,
-            sim_threshold=sim_threshold,
-            precomputed_m_t=m_t,
-            unit_normalize=unit_normalize
-        )
-        curvatures.append(k_t)
-    return curvatures
-
-
-def compute_curvature_batch_with_scaled(
-    hidden_states: torch.Tensor,
-    sentence_length: int,
-    window_size: int = 3,
-    sim_threshold: float = 0.3,
-    precomputed_m_t_list: Optional[list] = None,
-    unit_normalize: bool = True,
-    scale_by_D: bool = True
-) -> tuple:
-    """批量计算并返回原始 K 列表与缩放后的 K 列表（向后兼容）
-
-    返回: (k_list, k_scaled_list)
-    如果 scale_by_D=True，则 k_scaled = k * D（D 为 embedding 维度）
+def compute_k_log_t(cov_matrix, m_t=0.5, epsilon=1e-8, zeta=0.3):
     """
-    k_list = compute_curvature_batch(
-        hidden_states=hidden_states,
-        sentence_length=sentence_length,
-        window_size=window_size,
-        sim_threshold=sim_threshold,
-        precomputed_m_t_list=precomputed_m_t_list,
-        unit_normalize=unit_normalize
-    )
+    计算对数曲率 K_log(t)
+    K_log(t) = ln(det(Σ) + ε) - 2*ln(tr(Σ) + ε) - 2*ln|1 - ζ·M(t)|
+    """
+    det_cov = np.linalg.det(cov_matrix)
+    trace_cov = np.trace(cov_matrix)
+    term1 = np.log(det_cov + epsilon)
+    term2 = 2 * np.log(trace_cov + epsilon)
+    term3 = 2 * np.log(abs(1 - zeta * m_t))
+    k_log_t = term1 - term2 - term3
+    return k_log_t
 
-    D = int(hidden_states.shape[1]) if hidden_states.ndim >= 2 else 1
-    if scale_by_D:
-        k_scaled = [float(k * D) for k in k_list]
-    else:
-        k_scaled = list(k_list)
+def z_score_normalize(k_log_list):
+    """
+    Z-score归一化 K_log(t) 到 K_norm(t)
+    """
+    if not k_log_list:
+        return []
+    mu = np.mean(k_log_list)
+    sigma = np.std(k_log_list, ddof=1)
+    if sigma == 0:
+        return [0.0] * len(k_log_list)
+    return [(k_log - mu) / sigma for k_log in k_log_list]
 
-    return k_list, k_scaled
+def compute_semantic_curvature(text, model_name="D:\\liubotao\\other\\BIT_TS\\LLM_GCG\\code\\models\\Qwen2___5-0___5B-Instruct", layer_idx=12, k=2, m_t=0.5, epsilon=1e-8, zeta=0.3):
+    """
+    通用函数：计算句子的语义曲率K(t)、K_log(t)、K_norm(t)
+    参数：
+        text: 输入句子
+        model_name: 模型路径
+        layer_idx: 层索引，默认12
+        k: 窗口半宽，默认2 (N=5)
+        m_t: M(t)默认值，默认0.5
+        epsilon: 正则化参数，默认1e-8
+        zeta: ζ参数，默认0.3
+    返回：
+        results: 列表，每个元素为字典{"token": str, "k_t": float, "k_log_t": float, "k_norm_t": float, "interpretation": str}
+    """
+    # 从text提取
+    try:
+        h_t, token_num, tokenizer, inputs, _ = extract_hidden_states(text, model_name=model_name, middle_layer_idx=layer_idx)
+        h_t = h_t.numpy()
+        hidden_dim = h_t.shape[1]
+        # 获取token列表
+        tokens = []
+        for token_id in inputs['input_ids'][0]:
+            token_text = tokenizer.decode([token_id])
+            if token_text not in ['<|endoftext|>', '<|im_start|>', '<|im_end|>']:
+                tokens.append(token_text)
+        if len(tokens) != token_num:
+            tokens = [f"token_{i}" for i in range(token_num)]
+    except Exception as e:
+        raise RuntimeError(f"向量提取失败: {e}")
+
+    # 计算每个token的曲率
+    N = 2 * k + 1
+    results = []
+
+    for t in range(token_num):
+        # 窗口向量
+        window_indices = list(range(max(0, t - k), min(token_num, t + k + 1)))
+        window_vectors = [h_t[idx] for idx in window_indices]
+        while len(window_vectors) < N:
+            window_vectors.append(np.zeros(hidden_dim))
+
+        # 协方差
+        cov_matrix = compute_covariance_matrix(window_vectors)
+
+        # K(t)
+        k_t = compute_k_t(cov_matrix, m_t, epsilon, zeta)
+
+        # K_log(t)
+        k_log_t = compute_k_log_t(cov_matrix, m_t, epsilon, zeta)
+
+        results.append({
+            'token': tokens[t] if t < len(tokens) else f'token_{t}',
+            'k_t': k_t,
+            'k_log_t': k_log_t
+        })
+
+    # Z-score归一化
+    k_log_list = [r['k_log_t'] for r in results]
+    k_norm_list = z_score_normalize(k_log_list)
+
+    for i, r in enumerate(results):
+        r['k_norm_t'] = k_norm_list[i]
+        if r['k_norm_t'] > 0:
+            r['interpretation'] = "语义聚集"
+        elif r['k_norm_t'] < 0:
+            r['interpretation'] = "语义发散"
+        else:
+            r['interpretation'] = "语义无差异"
+
+    return results
+    """
+    端到端分析：向量提取 → 曲率计算 → 归一化 → 语义解读
+    """
+    print(f"分析句子：{text}")
+    print("=" * 80)
+
+    try:
+        # 第一步：向量提取
+        h_t, token_num, tokenizer, inputs, _ = extract_hidden_states(text, middle_layer_idx=12)
+        hidden_dim = h_t.shape[1]
+        print(f"向量提取成功：{token_num} 个token，{hidden_dim} 维向量")
+        if hidden_dim != 896:
+            print(f"警告：向量维度 {hidden_dim} 不等于896，可能不是千问5B第12层")
+
+        # 获取token列表
+        tokens = []
+        for token_id in inputs['input_ids'][0]:
+            token_text = tokenizer.decode([token_id])
+            if token_text not in ['<|endoftext|>', '<|im_start|>', '<|im_end|>']:
+                tokens.append(token_text)
+        if len(tokens) != token_num:
+            tokens = [f"token_{i}" for i in range(token_num)]  # 备用
+
+    except Exception as e:
+        print(f"向量提取失败：{e}")
+        print("使用随机896维向量进行测试...")
+        token_num = 8  # 假设句子有8个token
+        hidden_dim = 896
+        h_t = torch.randn(token_num, hidden_dim)
+        tokens = ["小猫", "追", "着", "蝴蝶", "跑", "过", "花园"]  # 手动分词
+
+    # 第二步：为每个token计算窗口向量和曲率
+    k = 2  # 窗口半宽
+    N = 2 * k + 1  # 5
+    results = []
+
+    for t in range(token_num):
+        # 构建窗口：t-k 到 t+k
+        window_indices = list(range(max(0, t - k), min(token_num, t + k + 1)))
+        window_vectors = []
+        for idx in window_indices:
+            window_vectors.append(h_t[idx].numpy())
+        # 补全到N个向量（用0向量）
+        while len(window_vectors) < N:
+            window_vectors.append(np.zeros(hidden_dim))
+
+        # 协方差计算
+        cov_matrix = compute_covariance_matrix(window_vectors)
+
+        # K(t)计算
+        k_t = compute_k_t(cov_matrix)
+
+        # K_log(t)计算
+        k_log_t = compute_k_log_t(cov_matrix)
+
+        results.append({
+            'token': tokens[t] if t < len(tokens) else f'token_{t}',
+            'hidden_dim': hidden_dim,
+            'k_t': k_t,
+            'k_log_t': k_log_t
+        })
+
+    # 第三步：Z-score归一化
+    k_log_list = [r['k_log_t'] for r in results]
+    k_norm_list = z_score_normalize(k_log_list)
+
+    for i, r in enumerate(results):
+        r['k_norm_t'] = k_norm_list[i]
+        if r['k_norm_t'] > 0:
+            r['interpretation'] = "语义聚集"
+        elif r['k_norm_t'] < 0:
+            r['interpretation'] = "语义发散"
+        else:
+            r['interpretation'] = "语义无差异"
+
+    # 输出表格
+    print(f"{'Token':<10} {'向量维度':<8} {'K(t)':<12} {'K_log(t)':<12} {'K_norm(t)':<12} {'语义解读'}")
+    print("-" * 80)
+    for r in results:
+        print(f"{r['token']:<10} {r['hidden_dim']:<8} {r['k_t']:<12.6f} {r['k_log_t']:<12.3f} {r['k_norm_t']:<12.3f} {r['interpretation']}")
+
+    print("\n语义分析解释：")
+    print("- 句子'小猫追着蝴蝶跑过花园'描述了一个动态场景，动作词如'追'、'跑'可能显示语义发散（变化/运动），")
+    print("  而名词如'小猫'、'蝴蝶'、'花园'可能显示聚集（稳定实体）。")
+    print("- K_norm(t)正值表示相对聚集，负值表示相对发散，基于整句话的Z-score分布。")
+
+def analyze_semantic_curvature(text="小猫追着蝴蝶跑过花园"):
+    """
+    端到端分析并打印结果
+    """
+    print(f"分析句子：{text}")
+    print("=" * 80)
+
+    try:
+        results = compute_semantic_curvature(text)
+        print(f"向量提取成功：{len(results)} 个token，896 维向量")
+    except Exception as e:
+        print(f"错误: {e}")
+        return
+
+    # 输出表格
+    print(f"{'Token':<10} {'K(t)':<12} {'K_log(t)':<12} {'K_norm(t)':<12} {'语义解读'}")
+    print("-" * 80)
+    for r in results:
+        print(f"{r['token']:<10} {r['k_t']:<12.6f} {r['k_log_t']:<12.3f} {r['k_norm_t']:<12.3f} {r['interpretation']}")
+
+    print("\n语义分析解释：")
+    print("- 句子描述动态场景，动作词可能显示语义发散（变化/运动），名词显示聚集（稳定实体）。")
+    print("- K_norm(t)正值表示相对聚集，负值表示相对发散，基于整句话的Z-score分布。")
+
+if __name__ == "__main__":
+    analyze_semantic_curvature()
