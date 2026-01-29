@@ -11,6 +11,7 @@ def compute_d_t(
     sim_threshold: float = 0.5,
     epsilon: float = 1e-6,
     precomputed_m_t: Optional[float] = None,
+    alpha: float = 0.3,
     return_diag: bool = False,
 ) -> float:
     """
@@ -29,6 +30,7 @@ def compute_d_t(
         sim_threshold: 语义相关性阈值 θ（余弦相似度）
         epsilon: 正则化项（避免除零）
         precomputed_m_t: 预计算的形态-语义匹配度 M(t)
+        alpha: 形态修正权重系数 α ∈ [0.2, 0.4]，默认0.3
     
     Returns:
         D_t: 语义分布距离，标量值 ∈ [0, 2]
@@ -124,7 +126,7 @@ def compute_d_t(
         if fallback_used:
             if precomputed_m_t is not None:
                 M_t = np.clip(precomputed_m_t, 0.0, 1.0)
-                beta_M = 1.0 - 0.3 * M_t
+                beta_M = 1.0 - alpha * M_t
             else:
                 beta_M = 1.0
 
@@ -167,10 +169,10 @@ def compute_d_t(
     
     # 6. 形态-语义匹配度修正因子 β(M(t))
     # 文档定义：β(M(t)) 为单调递减函数，M(t) 越高，修正越小
-    # 实现：β(M(t)) = 1 - 0.3·M(t)，使得 β ∈ [0.7, 1.0]
+    # 实现：β(M(t)) = 1 - α·M(t)，使得 β ∈ [0.6, 1.0] 当 α=0.4
     if precomputed_m_t is not None:
         M_t = np.clip(precomputed_m_t, 0.0, 1.0)
-        beta_M = 1.0 - 0.3 * M_t  # M(t)高时，β小，D(t)被压缩
+        beta_M = 1.0 - alpha * M_t  # M(t)高时，β小，D(t)被压缩
     else:
         beta_M = 1.0  # 默认无修正
     
@@ -195,6 +197,7 @@ def compute_d_t_batch(
     sim_threshold: float = 0.5,
     epsilon: float = 1e-6,
     precomputed_m_t_list: Optional[np.ndarray] = None,
+    alpha: float = 0.3,
     return_diagnostics: bool = False
 ) -> np.ndarray:
     """
@@ -226,8 +229,10 @@ def compute_d_t_batch(
             window_size=window_size,
             sim_threshold=sim_threshold,
             epsilon=epsilon,
-            precomputed_m_t=precomputed_m_t
-        , return_diag=return_diagnostics)
+            precomputed_m_t=precomputed_m_t,
+            alpha=alpha,
+            return_diag=return_diagnostics
+        )
 
         if return_diagnostics:
             D_t, diag = result

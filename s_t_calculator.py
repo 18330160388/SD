@@ -1,358 +1,301 @@
-"""
-中文大语言模型语义层语义漂移系数 S(t) 计算器
-
-基于文档 3-4 定义：
-S(t) = [dist(h(t), G(t)) / (distmax(t) + ε)] × [1 - ω·C(t) + ν·D(t)] × ξ(M(t))
-
-核心组件：
-1. 全局语义锚点 G(t)：动态时间衰减自注意力加权
-2. 归一化欧氏距离 dist(h, G)：局部-锚点偏离度
-3. 局部稳定性修正：聚类密度 C(t) 和平均距离 D(t)
-4. 中文形态修正因子：ξ(M(t)) = 1 - μ·M(t)
-"""
-
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 # 导入依赖模块
-from m_t_calculator import compute_m_t_full, ChineseMorphExtractor, MorphEmbedding
+from llm_hidden_extractor import extract_hidden_states
+from m_t_calculator import compute_m_t_full, ChineseMorphExtractor
 from c_t_calculator import compute_c_t
 from d_t_calculator import compute_d_t
-from h_t_calculator import init_entropy_calculator
 
 
-class GlobalSemanticAnchor:
-    """全局语义锚点计算器
-    
-    G(t) = Σ_{s=1}^{t} α(s,t)·h(s)
-    α(s,t) = softmax(h(s)^T·h(t)/√d · exp(-λ·|t-s|))
+class SemanticDriftCoeff(nn.Module):
+    """语义漂移系数S(t)的PyTorch实现
+
+    公式: S(t) = [dist(h(t), h_global(t)) / dist_max(t)] * [1 - ω·C(t) + ν·D(t)] * ξ(M(t))
     """
-    
-    def __init__(self, decay_lambda: float = 0.05):
-        """
-        Args:
-            decay_lambda: 时间衰减系数 λ，强化近期token对主题的贡献
-        """
-        self.decay_lambda = decay_lambda
-    
-    def compute_attention_weights(self, 
-                                  hidden_states: torch.Tensor,
-                                  current_idx: int) -> torch.Tensor:
-        """计算时间衰减自注意力权重 α(s,t)
-        
-        Args:
-            hidden_states: [seq_len, hidden_dim] 所有token的语义向量
-            current_idx: 当前token索引 t
-        
-        Returns:
-            attention_weights: [current_idx+1] 归一化注意力权重
-        """
-        seq_len, hidden_dim = hidden_states.shape
-        h_t = hidden_states[current_idx]  # [hidden_dim]
-        
-        # 只考虑当前token及之前的token（因果性）
-        past_hidden = hidden_states[:current_idx + 1]  # [current_idx+1, hidden_dim]
-        
-        # 计算语义相似度：h(s)^T·h(t)/√d
-        similarity = torch.matmul(past_hidden, h_t) / np.sqrt(hidden_dim)  # [current_idx+1]
-        
-        # 计算时间距离并应用指数衰减：exp(-λ·|t-s|)
-        time_distances = torch.arange(current_idx + 1, dtype=torch.float32)
-        time_decay = torch.exp(-self.decay_lambda * (current_idx - time_distances))
-        
-        # 融合语义相似度和时间衰减
-        attention_logits = similarity * time_decay  # [current_idx+1]
-        
-        # Softmax归一化
-        attention_weights = F.softmax(attention_logits, dim=0)
-        
-        return attention_weights
-    
-    def compute_anchor(self, 
-                      hidden_states: torch.Tensor,
-                      current_idx: int) -> torch.Tensor:
-        """计算全局语义锚点 G(t)
-        
-        Args:
-            hidden_states: [seq_len, hidden_dim] 所有token的语义向量
-            current_idx: 当前token索引 t
-        
-        Returns:
-            anchor: [hidden_dim] 全局语义锚点向量
-        """
-        # 计算注意力权重
-        attention_weights = self.compute_attention_weights(hidden_states, current_idx)
-        
-        # 加权求和：G(t) = Σ α(s,t)·h(s)
-        past_hidden = hidden_states[:current_idx + 1]  # [current_idx+1, hidden_dim]
-        anchor = torch.sum(past_hidden * attention_weights.unsqueeze(1), dim=0)  # [hidden_dim]
-        
-        return anchor
 
+    def __init__(self,
+                 lambda_decay: float = 0.1,
+                 middle_layer_idx: int = 12,
+                 normalize_hidden: bool = True,
+                 use_global_anchor: bool = False):
+        """
+        Args:
+            lambda_decay: 时间衰减系数λ，默认0.1
+            middle_layer_idx: 中间层索引，默认12
+            normalize_hidden: 是否对hidden states做L2归一化，消除首Token范数异常影响
+            use_global_anchor: 是否使用全局句子级锚点（需双遍历），默认False使用动态锚点
+        """
+        super(SemanticDriftCoeff, self).__init__()
+        # 可训练参数μ，初始化为0.25
+        self.mu = nn.Parameter(torch.tensor(0.25))
+        # 固定参数
+        self.omega = 0.3
+        self.nu = 0.2
+        self.lambda_decay = lambda_decay
+        self.normalize_hidden = normalize_hidden
+        self.use_global_anchor = use_global_anchor
 
-class SemanticDriftCalculator:
-    """语义漂移系数 S(t) 计算器
-    
-    完整实现文档 3-4 定义的语义漂移系数计算管线
-    """
-    
-    def __init__(self, 
-                 decay_lambda: float = 0.05,
-                 omega: float = 0.4,
-                 nu: float = 0.3,
-                 mu: float = 0.25,
-                 epsilon: float = 1e-6,
-                 morph_extractor: Optional[ChineseMorphExtractor] = None,
-                 morph_embedding: Optional[MorphEmbedding] = None,
-                 h_t_calculator: Optional[object] = None,
-                 model=None,  # 新增：LLM模型（用于Φ(m(t))）
-                 tokenizer=None):  # 新增：分词器（用于Φ(m(t))）
+        # LLM相关参数（固定值）
+        self.model_name = "D:\\liubotao\\other\\BIT_TS\\LLM_GCG\\code\\models\\Qwen2___5-0___5B-Instruct"
+        self.middle_layer_idx = middle_layer_idx
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # 初始化形态特征提取器
+        self.morph_extractor = ChineseMorphExtractor()
+
+    def forward(self, text: str) -> torch.Tensor:
         """
+        计算语义漂移系数S(t)
+
         Args:
-            decay_lambda: 时间衰减系数 λ
-            omega: 聚类密度权重 ω
-            nu: 平均距离权重 ν
-            mu: 形态修正系数 μ
-            epsilon: 正则化项
-            morph_extractor: 中文形态特征提取器（用于M(t)计算）
-            morph_embedding: 形态嵌入模型（保留参数兼容性）
-            h_t_calculator: 多义熵计算器（用于M(t)计算）
-            model: LLM模型（用于提取字符embedding）
-            tokenizer: 分词器（用于编码字符）
-        """
-        self.decay_lambda = decay_lambda
-        self.omega = omega
-        self.nu = nu
-        self.mu = mu
-        self.epsilon = epsilon
-        
-        # 初始化全局锚点计算器
-        self.anchor_calculator = GlobalSemanticAnchor(decay_lambda=decay_lambda)
-        
-        # 初始化M(t)计算所需组件
-        self.morph_extractor = morph_extractor if morph_extractor else ChineseMorphExtractor()
-        self.morph_embedding = morph_embedding if morph_embedding else MorphEmbedding(morph_dim=254, hidden_dim=896)
-        self.h_t_calculator = h_t_calculator if h_t_calculator else init_entropy_calculator()
-        
-        # 新增：保存model和tokenizer用于Φ(m(t))计算
-        self.model = model
-        self.tokenizer = tokenizer
-    
-    def compute_normalized_distance(self, 
-                                    h_t: torch.Tensor,
-                                    anchor: torch.Tensor) -> float:
-        """计算归一化欧氏距离 dist(h(t), G(t))
-        
-        dist(h, G) = ||h - G||_2 / max(||h||_2, ||G||_2)
-        
-        Args:
-            h_t: [hidden_dim] 当前token语义向量
-            anchor: [hidden_dim] 全局语义锚点
-        
+            text: 输入的中文文本
+
         Returns:
-            normalized_dist: 归一化距离 ∈ [0, 2]
+            S_t: [seq_len] 语义漂移系数，取值范围[0,1]
         """
-        # 计算欧氏距离
-        euclidean_dist = torch.norm(h_t - anchor, p=2).item()
-        
-        # 计算归一化分母：max(||h||_2, ||G||_2)
-        norm_h = torch.norm(h_t, p=2).item()
-        norm_g = torch.norm(anchor, p=2).item()
-        denominator = max(norm_h, norm_g) + self.epsilon
-        
-        # 归一化
-        normalized_dist = euclidean_dist / denominator
-        
-        return normalized_dist
-    
-    def compute_morphology_correction_factor(self, m_t: float) -> float:
-        """计算中文形态-语义匹配度修正因子 ξ(M(t))
-        
-        ξ(M(t)) = 1 - μ·M(t)
-        
-        形态匹配度高 → 语义稳定 → 漂移系数降低
-        
-        Args:
-            m_t: 形态-语义匹配度 M(t) ∈ [0, 1]
-        
-        Returns:
-            correction_factor: ξ(M(t)) ∈ [1-μ, 1]
-        """
-        return 1.0 - self.mu * m_t
-    
-    def compute_local_stability_correction(self, 
-                                          c_t: float,
-                                          d_t: float) -> float:
-        """计算局部稳定性修正项
-        
-        修正项 = 1 - ω·C(t) + ν·D(t)
-        
-        - 聚类密度 C(t) 越高 → 局部越稳定 → 漂移系数降低
-        - 平均距离 D(t) 越大 → 局部越分散 → 漂移系数升高
-        
-        Args:
-            c_t: 聚类密度 C(t)
-            d_t: 平均欧氏距离 D(t)
-        
-        Returns:
-            correction: 局部稳定性修正系数
-        """
-        correction = 1.0 - self.omega * c_t + self.nu * d_t
-        
-        # 确保修正因子为正（避免极端情况）
-        correction = max(0.1, correction)
-        
-        return correction
-    
-    def compute_s_t(self,
-                   h_t: torch.Tensor,
-                   anchor: torch.Tensor,
-                   c_t: float,
-                   d_t: float,
-                   m_t: float) -> float:
-        """计算单个token的语义漂移系数 S(t)
-        
-        S(t) = [dist(h(t), G(t)) / (distmax + ε)] × [1 - ω·C(t) + ν·D(t)] × ξ(M(t))
-        
-        Args:
-            h_t: [hidden_dim] 当前token语义向量
-            anchor: [hidden_dim] 全局语义锚点
-            c_t: 聚类密度
-            d_t: 平均欧氏距离
-            m_t: 形态-语义匹配度
-        
-        Returns:
-            s_t: 语义漂移系数 S(t) ∈ [0, 1]
-        """
-        # 1. 计算归一化锚点偏离度
-        dist = self.compute_normalized_distance(h_t, anchor)
-        
-        # 自适应distmax：基于向量范数的理论上界
-        # 对于L2归一化向量，最大距离为sqrt(2)≈1.414
-        # 但实际LLM hidden states通常未归一化，使用更大的基准
-        h_norm = torch.norm(h_t).item()
-        anchor_norm = torch.norm(anchor).item()
-        # 理论最大距离约为 ||h_t|| + ||G(t)||
-        distmax = max(h_norm + anchor_norm, 1.0)  # 至少为1避免除0
-        
-        drift_base = dist / (distmax + self.epsilon)
-        
-        # 2. 计算局部稳定性修正
-        stability_correction = self.compute_local_stability_correction(c_t, d_t)
-        
-        # 3. 计算中文形态修正因子
-        morph_correction = self.compute_morphology_correction_factor(m_t)
-        
-        # 4. 计算最终漂移系数
-        s_t = drift_base * stability_correction * morph_correction
-        
-        # 确保范围 [0, 1]
-        s_t = max(0.0, min(1.0, s_t))
-        
-        return s_t
-    
-    def compute_s_t_batch(self,
-                         hidden_states: torch.Tensor,
-                         tokens: List[str],
-                         attention_weights: Optional[torch.Tensor] = None) -> np.ndarray:
-        """批量计算序列中所有token的语义漂移系数（完整实现）
-        
-        Args:
-            hidden_states: [seq_len, hidden_dim] 语义状态向量序列
-            tokens: [seq_len] token文本列表
-            attention_weights: [seq_len, seq_len] 注意力权重矩阵（可选，用于M(t)计算）
-        
-        Returns:
-            s_t_array: [seq_len] 每个token的语义漂移系数
-        """
-        seq_len = hidden_states.shape[0]
-        s_t_array = np.zeros(seq_len)
-        
+        # 从LLM提取语义状态向量h(t)
+        hidden_states, token_num, tokenizer, inputs, attentions = extract_hidden_states(
+            text=text,
+            model_name=self.model_name,
+            middle_layer_idx=self.middle_layer_idx,
+            device=self.device
+        )
+
+        # 解码tokens
+        tokens = []
+        for i in range(len(inputs['input_ids'][0])):
+            token_text = tokenizer.decode([inputs['input_ids'][0][i]])
+            tokens.append(token_text)
+
+        seq_len, d_model = hidden_states.shape
+
+        # 【改进1】L2归一化：消除首Token范数异常影响
+        if self.normalize_hidden:
+            hidden_states = F.normalize(hidden_states, p=2, dim=1)  # 每个向量范数归一化为1
+
+        # 【改进2】全局锚点：使用整个序列的平均表示（更符合"全局主题"定义）
+        if self.use_global_anchor:
+            # 全局句子级锚点：整个序列的加权平均
+            h_global_fixed = self._compute_sentence_embedding(hidden_states)
+        else:
+            h_global_fixed = None
+
+        # 初始化输出张量
+        S_t = torch.zeros(seq_len, device=hidden_states.device, dtype=hidden_states.dtype)
+
         for t in range(seq_len):
-            # 1. 计算全局语义锚点 G(t)
-            anchor = self.anchor_calculator.compute_anchor(hidden_states, t)
-            
-            # 2. 提取当前token的语义向量和文本
-            h_t = hidden_states[t]
-            token_text = tokens[t]
-            
-            # 3. 计算形态-语义匹配度 M(t)（复用 m_t_calculator.py）
-            m_t = compute_m_t_full(
-                h_t=h_t,
-                token_text=token_text,
-                tokens=tokens,
-                token_idx=t,
-                hidden_states=hidden_states,
-                model=self.model,  # 传入LLM模型
-                tokenizer=self.tokenizer,  # 传入分词器
-                attention_weights=attention_weights,
-                beta=0.2
-            )
-            
-            # 4. 计算聚类密度 C(t)（复用 c_t_calculator.py）
-            c_t = compute_c_t(
-                h_t=h_t,
-                hidden_states=hidden_states,
-                token_idx=t,
-                k=3,  # 上下文窗口大小
-                theta=0.5,  # 相似度阈值
-                alpha=0.4,  # 形态修正权重
-                precomputed_m_t=m_t  # 传入已计算的M(t)
-            )
-            
-            # 5. 计算平均欧氏距离 D(t)（复用 d_t_calculator.py）
-            d_t = compute_d_t(
-                h_t=h_t,
-                hidden_states=hidden_states,
-                token_idx=t,
-                sentence_length=seq_len,
-                window_size=3,
-                sim_threshold=0.5,
-                precomputed_m_t=m_t  # 传入已计算的M(t)
-            )
-            
-            # 6. 计算语义漂移系数 S(t)
-            s_t = self.compute_s_t(h_t, anchor, c_t, d_t, m_t)
-            s_t_array[t] = s_t
+            # 当前时间步的语义向量
+            h_current = hidden_states[t]  # [d_model]
+
+            # 计算全局语义锚点h_global(t)
+            if self.use_global_anchor:
+                h_global = h_global_fixed  # 使用固定的全局主题
+            else:
+                h_global = self._compute_global_anchor(hidden_states, t)  # 使用动态锚点
+
+            # 计算归一化距离dist
+            dist = self._compute_normalized_distance(h_current, h_global)
+
+            # 计算dist_max(t)
+            dist_max = self._compute_dist_max(hidden_states, t)
+
+            # 距离比例
+            dist_ratio = dist / (dist_max + 1e-8)
+
+            # 计算M(t)
+            m_t = self._compute_m_t(hidden_states, tokens, t, tokenizer)
+
+            # 计算C(t)
+            c_t = self._compute_c_t(hidden_states, tokens, t, m_t)
+
+            # 计算D(t)
+            d_t = self._compute_d_t(hidden_states, tokens, t, m_t)
+
+            # 局部稳定性修正项
+            stability_term = 1.0 - self.omega * c_t + self.nu * d_t
+
+            # 中文形态修正因子ξ(M(t))
+            xi = 1.0 - self.mu * m_t
+
+            # 计算S(t)
+            s_t_value = dist_ratio * stability_term * xi
+
+            # 确保范围在[0, 1]
+            S_t[t] = torch.clamp(s_t_value, 0.0, 1.0)
+
+        return S_t
+
+    def _compute_global_anchor(self, h_sequence: torch.Tensor, t: int) -> torch.Tensor:
+        """
+        计算全局语义锚点h_global(t) = Σ_{s=1}^t α(s,t) · h(s)
         
-        return s_t_array
+        公式(7-1): α(s,t) = softmax(h(s)^T·h(t) / (√d·exp(λ·(t-s))))
 
+        Args:
+            h_sequence: [seq_len, d_model] 序列语义向量
+            t: 当前时间步
 
-def init_drift_calculator(decay_lambda: float = 0.05,
-                          omega: float = 0.4,
-                          nu: float = 0.3,
-                          mu: float = 0.25,
-                          morph_extractor: Optional[ChineseMorphExtractor] = None,
-                          morph_embedding: Optional[MorphEmbedding] = None,
-                          h_t_calculator: Optional[object] = None,
-                          model=None,  # 新增
-                          tokenizer=None) -> SemanticDriftCalculator:  # 新增
-    """初始化语义漂移系数计算器（便于main.py调用）
-    
-    Args:
-        decay_lambda: 时间衰减系数（默认0.05，适配中文连贯性）
-        omega: 聚类密度权重（默认0.4）
-        nu: 平均距离权重（默认0.3）
-        mu: 形态修正系数（默认0.25）
-        morph_extractor: 形态特征提取器（可选，不提供则自动创建）
-        morph_embedding: 形态嵌入模型（可选，不提供则自动创建）
-        h_t_calculator: H(t)计算器（可选，不提供则自动创建）
-        model: LLM模型（可选，用于Φ(m(t))）
-        tokenizer: 分词器（可选，用于Φ(m(t))）
-    
-    Returns:
-        drift_calculator: 语义漂移系数计算器实例
-    """
-    return SemanticDriftCalculator(
-        decay_lambda=decay_lambda,
-        omega=omega,
-        nu=nu,
-        mu=mu,
-        morph_extractor=morph_extractor,
-        morph_embedding=morph_embedding,
-        h_t_calculator=h_t_calculator,
-        model=model,
-        tokenizer=tokenizer
-    )
+        Returns:
+            h_global: [d_model] 全局锚点
+        """
+        # 过去的时间步h(s) for s=1 to t
+        h_past = h_sequence[:t+1]  # [t+1, d_model]
+        h_current = h_sequence[t]  # [d_model]
+        d_model = h_sequence.shape[1]
+
+        # 计算相似度: h(s)^T · h(t)
+        similarity = torch.matmul(h_past, h_current)  # [t+1]
+
+        # 时间衰减因子: exp(λ·(t-s))
+        time_diff = torch.arange(t+1, dtype=torch.float32, device=h_sequence.device)
+        time_decay = torch.exp(self.lambda_decay * (t - time_diff))  # exp(λ·(t-s))，近期token权重更大
+
+        # 注意力logits: h(s)^T·h(t) / (√d·exp(λ·(t-s)))
+        # 添加√d归一化项
+        sqrt_d = torch.sqrt(torch.tensor(d_model, dtype=torch.float32, device=h_sequence.device))
+        attention_logits = similarity / (sqrt_d * time_decay + 1e-8)
+
+        # Softmax归一化
+        alpha = F.softmax(attention_logits, dim=0)  # [t+1]
+
+        # 加权求和
+        h_global = torch.sum(h_past * alpha.unsqueeze(1), dim=0)  # [d_model]
+
+        return h_global
+
+    def _compute_sentence_embedding(self, h_sequence: torch.Tensor) -> torch.Tensor:
+        """
+        计算全局句子级embedding（非因果）
+        
+        使用整个序列的加权平均作为"全局主题"锚点
+        这样"江河湖海"都会与同一个固定主题比较
+
+        Args:
+            h_sequence: [seq_len, d_model] 完整序列语义向量
+
+        Returns:
+            h_global_fixed: [d_model] 全局句子embedding
+        """
+        seq_len = h_sequence.shape[0]
+        
+        # 方案1：简单平均（最稳定）
+        # h_global = torch.mean(h_sequence, dim=0)
+        
+        # 方案2：使用最后几个Token的平均（通常包含最完整信息）
+        # last_k = min(3, seq_len)
+        # h_global = torch.mean(h_sequence[-last_k:], dim=0)
+        
+        # 方案3：使用注意力加权（所有Token对所有Token的平均相似度）
+        # 计算所有Token间的平均相似度作为权重
+        similarity_matrix = torch.matmul(h_sequence, h_sequence.T)  # [seq_len, seq_len]
+        avg_similarity = torch.mean(similarity_matrix, dim=1)  # [seq_len] 每个Token的平均相似度
+        weights = F.softmax(avg_similarity, dim=0)  # 归一化为权重
+        h_global = torch.sum(h_sequence * weights.unsqueeze(1), dim=0)  # 加权求和
+        
+        return h_global
+
+    def _compute_normalized_distance(self, h_current: torch.Tensor, h_global: torch.Tensor) -> torch.Tensor:
+        """
+        计算欧氏距离
+        
+        如果已L2归一化（normalize_hidden=True）：
+            - 所有向量范数=1，在单位球面上
+            - 直接返回欧氏距离，范围∈[0, 2]
+        
+        如果未归一化（normalize_hidden=False）：
+            - 除以max(||h(t)||, ||h_global||)进行范数归一化
+            - 归一化后距离范围∈[0, √2]
+
+        Args:
+            h_current: [d_model] 当前语义向量
+            h_global: [d_model] 全局锚点
+
+        Returns:
+            dist: 标量，欧氏距离
+        """
+        # 欧氏距离 ||h(t) - h_global(t)||_2
+        euclidean_dist = torch.norm(h_current - h_global, p=2)
+
+        # 如果已L2归一化，直接返回欧氏距离
+        if self.normalize_hidden:
+            return euclidean_dist
+        
+        # 未归一化时，除以max(norm)进行归一化
+        norm_current = torch.norm(h_current, p=2)
+        norm_global = torch.norm(h_global, p=2)
+        denominator = torch.max(norm_current, norm_global)
+        
+        # 避免除零
+        if denominator < 1e-8:
+            return torch.tensor(0.0, device=h_current.device, dtype=h_current.dtype)
+
+        return euclidean_dist / denominator
+
+    def _compute_dist_max(self, h_sequence: torch.Tensor, t: int) -> torch.Tensor:
+        """
+        计算dist_max(t): 当前上下文窗口内的最大归一化距离
+        
+        由于归一化距离的理论上界是√2，这里计算实际观测到的最大距离
+
+        Args:
+            h_sequence: [seq_len, d_model] 序列语义向量
+            t: 当前时间步
+
+        Returns:
+            dist_max: 标量，当前上下文的最大归一化距离
+        """
+        # 计算当前位置的全局锚点（已在forward中计算，这里重新计算以保持独立性）
+        h_global = self._compute_global_anchor(h_sequence, t)
+        
+        # 计算从位置0到t的所有归一化距离
+        max_dist = torch.tensor(0.0, device=h_sequence.device, dtype=h_sequence.dtype)
+        for s in range(t + 1):
+            dist = self._compute_normalized_distance(h_sequence[s], h_global)
+            max_dist = torch.max(max_dist, dist)
+        
+        # 如果max_dist过小，使用理论上界√2的一半作为默认值
+        if max_dist < 1e-6:
+            max_dist = torch.tensor(1.0, device=h_sequence.device, dtype=h_sequence.dtype)
+
+        return max_dist
+
+    def _compute_m_t(self, h_t: torch.Tensor, tokens: List[str], t: int, tokenizer) -> float:
+        """计算形态-语义匹配度M(t)"""
+        token_text = tokens[t]
+        return compute_m_t_full(
+            h_t=h_t[t],
+            token_text=token_text,
+            tokens=tokens,
+            token_idx=t,
+            hidden_states=h_t,
+            model=None,  # 已经在外部提取了hidden_states，这里不需要model
+            tokenizer=tokenizer,
+            layer_idx=self.middle_layer_idx
+        )
+
+    def _compute_c_t(self, h_t: torch.Tensor, tokens: List[str], t: int, m_t: float) -> float:
+        """计算聚类密度C(t)"""
+        return compute_c_t(
+            h_t=h_t[t],
+            hidden_states=h_t,
+            token_idx=t,
+            k=3,
+            theta=0.5,
+            alpha=0.4,
+            precomputed_m_t=m_t
+        )
+
+    def _compute_d_t(self, h_t: torch.Tensor, tokens: List[str], t: int, m_t: float) -> float:
+        """计算平均欧氏距离D(t)"""
+        return compute_d_t(
+            h_t=h_t[t],
+            hidden_states=h_t,
+            token_idx=t,
+            sentence_length=len(tokens),
+            window_size=3,
+            sim_threshold=0.5,
+            precomputed_m_t=m_t
+        )
