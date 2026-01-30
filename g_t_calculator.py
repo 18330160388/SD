@@ -56,15 +56,19 @@ class InputFeatureConstructor(nn.Module):
         # ③ 形态特征投影（224维 → morph_dim）
         # 形态特征来自 M(t) 模块的 morph_extractor（224维）
         self.morph_projection = nn.Linear(224, morph_dim)
+        self.morph_projection.requires_grad_(False)  # 冻结参数
         
-        # ④ 位置编码（相对位置编码，可学习）
-        self.position_embedding = nn.Embedding(max_seq_len * 2, pos_dim)  # 支持相对位置
+        # ④ 位置编码（相对位置编码，固定）
+        self.position_embedding = nn.Embedding(max_seq_len * 2, pos_dim)
+        self.position_embedding.requires_grad_(False)  # 冻结参数
         
-        # ⑤ 知识增强投影（简化为可学习嵌入）
+        # ⑤ 知识增强投影（固定嵌入）
         self.knowledge_embedding = nn.Embedding(vocab_size, knowledge_dim)
+        self.knowledge_embedding.requires_grad_(False)  # 冻结参数
         
-        # 线性投影：input_dim → hidden_dim
+        # 线性投影：input_dim → hidden_dim（固定映射）
         self.projection = nn.Linear(input_dim, hidden_dim)
+        self.projection.requires_grad_(False)  # 冻结参数
         
         # LayerNorm归一化
         self.layer_norm = nn.LayerNorm(hidden_dim)
@@ -173,19 +177,20 @@ class ContextDrivingForce(nn.Module):
         seq_len = u_all.shape[0]
         
         # ==================== 第一步：注意力加权筛选 ====================
-        # α(t) = softmax(h(t)^T · W_a · u(t) / √d · exp(-λ|t-s|))
+        # 公式(6-1-1): α(t) = softmax(h(t)^T · W_g · u(t) / √d)
+        # 输入u(t)与当前语义状态h(t)的交互筛选
         
-        # 计算注意力logits
-        u_projected = self.W_a(u_t)  # (hidden_dim,)
+        # 计算注意力logit: h(t)^T · W_a · u(t)
+        u_projected = self.W_a(u_t)  # (hidden_dim,) W_a·u(t)
         attn_logit = torch.dot(h_t, u_projected) / np.sqrt(self.hidden_dim)  # 标量
         
-        # 距离衰减（简化：仅对当前token，实际应对整个窗口）
-        # 这里简化处理，实际应该计算整个上下文窗口的注意力
-        # 为简化，我们仅对当前输入应用注意力权重α=1（因为只有单个输入）
-        alpha = torch.sigmoid(attn_logit)  # 使用sigmoid而非softmax（单元素情况）
+        # 注意：单个logit时softmax等价于sigmoid，这里用sigmoid更直观
+        # α(t) ∈ [0,1]，表示u(t)与h(t)的相关性强度
+        alpha = torch.sigmoid(attn_logit)  # 标量
         
+        # 公式(6-1-2): u_att(t) = α(t) · u(t)
         # 注意力加权后的输入
-        u_att = alpha * u_t  # (hidden_dim,)
+        u_att = alpha * u_t  # (hidden_dim,) 标量乘向量
         
         # ==================== 第二步：门控机制筛选 ====================
         # g_gate(t) = sigmoid(W_g · Concat(h(t), u_att(t)) + b_g)
